@@ -178,7 +178,7 @@ let rec type_of_hole_in_structure n s_items = match s_items with
 (* 本当は unit を返していた *)
 (* type_expr is in Types.ml *)
 let main structure n =
-  (* 3 番の穴の型とそこから見える変数の型を得る *)
+  (* n 番の穴の型とそこから見える変数の型を得る *)
   let (typ, env) = type_of_hole_in_structure n structure.str_items in
   (*
   Format.fprintf ppf "@[type of hole:@ %a@]@." (* 穴の型を表示 *)
@@ -208,7 +208,7 @@ let refine_goal n desc structure =
 	       [] -> str
 	     | f :: [] ->
 		gensym ();
-		str ^ "exit(*{ }*))" ^ (string_of_int !holenum)
+		str ^ "exit(*{ }*)" ^ (string_of_int !holenum) ^ ")"
 	     | f :: r ->
 		gensym ();
 		loop r (str ^ "exit(*{ }*)" ^ (string_of_int !holenum) ^ ", ") in
