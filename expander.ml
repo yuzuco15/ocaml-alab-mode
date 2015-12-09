@@ -215,9 +215,13 @@ let refine_goal n desc structure =
 	   let str = loop lst "(" in
 	   (* Format.fprintf ppf "tuple@."*)
 	   Format.fprintf ppf "%s@." str
-	| _ -> Format.fprintf ppf "@ this is not tuple@."
+	| _ -> Format.fprintf ppf "Error: this is not tuple@."
   end
-
+    
+(* refine_goal_with_argument: check if the `typ` and the type of goal (i.e. `desc`) is the same *)
+(* refine_goal_with_argument: int -> type_expr -> type_expr_desc -> Typedtree.structure -> unit *)
+let refine_goal_with_argument n typ desc structure = Format.fprintf ppf "Not supported@."
+  
 (* type t_kind: Record or Variant *)
 type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list
 			 
@@ -286,7 +290,7 @@ let find_fields typ lst = match typ with
 (* find_type_of_var: string -> env_t -> Types.type_expr *)
 (* type env_t = string * type_expr *)
 let rec find_type_of_var x env = match env with
-    [] -> raise Not_found
+    [] -> failwith "variable %s is not found in this scope@." x
   | ((v, typ) :: r) -> if v = x then typ else find_type_of_var x r
 
 (* type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list *)
@@ -363,7 +367,7 @@ let get_mode () = match Sys.argv.(3) with
   | _ -> failwith "select_mode is neither Refine or Match"
 
 (* expander の入り口：型の付いた入力プログラムを受け取ってくる *)
-(* Expander.go : Typedtree.structure * Typedtree.module_coercion -> string -> string option ->
+(* Expander.go : Typedtree.structure * Typedtree.module_coercion ->
                  Typedtree.structure * Typedtree.module_coercion *)
 (* ./expander filename n mode Some(var) *)
 let go (structure, coercion) =
@@ -375,11 +379,18 @@ let go (structure, coercion) =
 	    let n = int_of_string Sys.argv.(2) in
 	    let (typ, env) = main structure n in (* typ: goal の型, env: スコープ内の変数の型 *)
 	    let mode = get_mode () in
-	    match mode with
-	      Refine -> refine_goal n typ.desc structure
-	    (* n 番目の hole にユーザがどの変数で match したいと入力してるかを取得 *)
-	    | Match -> let var = get_matched_variable n in
-		       print_match_expr n var env structure
+	    begin
+	      match mode with
+		Refine ->
+		(* Sys.argv.(4) is "0" with no argument *)
+		let var = Sys.argv.(4) in
+		if var = "0" then refine_goal n typ.desc structure
+		else let typ_of_var = find_type_of_var var env in
+		     refine_goal_with_argument n typ_of_var typ.desc structure
+	      (* n 番目の hole にユーザがどの変数で match したいと入力してるかを取得 *)
+	      | Match -> let var = get_matched_variable n in
+			 print_match_expr n var env structure
+	    end
 	  end
 	| _ -> failwith "Expander: module_coercion not supported yet."
   end;
