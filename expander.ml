@@ -200,7 +200,8 @@ let holenum = ref (-1)
 let gensym () = holenum := (!holenum + 1)
 
 let rec match_types_expr expr = match expr.desc with
-    Tvar (_) -> Format.fprintf ppf "Tvar@."
+    Tvar (Some(s)) -> Format.fprintf ppf "Tvar %s@." s
+  | Tvar (_) -> Format.fprintf ppf "Tvar None@."
   | Tarrow (lbl, e1, e2, _) -> Format.fprintf ppf "Tarrow: %s@." lbl;
 			       match_types_expr e1;
 			       match_types_expr e2
@@ -223,28 +224,6 @@ let rec match_types_expr expr = match expr.desc with
   | Tunivar (_) -> Format.fprintf ppf "Tunivar@."
   | Tpoly (_, _) -> Format.fprintf ppf "Tpoly@."
   | Tpackage (_, _, _) -> Format.fprintf ppf "Tpackage@."
-			     
-(* refine_goal: int -> type_expr -> Typedtree.structure -> unit *)
-let rec refine_goal n expr structure =
-  begin match expr.desc with
-	| Ttuple (lst) -> (* record もやる *)
-	   let rec loop l str =
-	     match l with
-	       [] -> str
-	     | f :: [] ->
-		gensym ();
-		str ^ "exit(*{ }*))"
-	     | f :: r ->
-		gensym ();
-		loop r (str ^ "exit(*{ }*), ") in
-	   let str = loop lst "(" in
-	   (* Format.fprintf ppf "tuple@."*)
-	   Format.fprintf ppf "%s@." str
-	| Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
-	   refine_goal n e structure
-	| _ -> Format.fprintf ppf "Error: Not_supported@.";
-	       match_types_expr expr
-  end
 
 (* is_equal_type: type_expr -> type_expr -> bool *)
 let rec is_equal_type typ1 typ2 =
@@ -317,7 +296,7 @@ let rec find_constructor name lst = match lst with
 		    []
      end
        
-(* find_constructors: Path.t -> Typedtree.structure_item list -> t_declaration list *)
+(* find_constructors: Path.t -> Typedtree.structure_item list -> t_kind list *)
 (* path (ユーザ定義の variant の名前) の型情報を structure から探す *)
 let rec find_constructors path structure_items =
   match path with
@@ -410,6 +389,51 @@ let print_match_expr n x env structure =
 			  let fields = find_fields typ structure.str_items in
 			  print_t_kinds x fields
 	| _ -> Format.fprintf ppf "Neither of them@."
+  end
+
+(* print_refine_record: t_kind list -> unit *)
+let print_refine_record kinds =
+  let rec loop k =
+    match k with
+      Record (lst) ->
+      let s = "{" in
+      (* Format.fprintf ppf "{@."; *)
+      let rec loop l str = match l with
+	  [] -> str ^ "}"
+	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ "exit(*{ }*)")
+	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ "exit(*{ }*)" ^ ", ")
+      in
+      let str = loop lst s in
+      Format.fprintf ppf "%s@." str;
+    | _ -> Format.fprintf ppf "Error: Cannot Refine@."
+  in
+  List.iter loop kinds
+  
+(* refine_record: Path.t -> type_expr list structure *)
+let refine_record path el structure =
+  let fields = find_constructors path structure.str_items in
+  print_refine_record fields
+
+(* refine_goal: int -> type_expr -> Typedtree.structure -> unit *)
+let rec refine_goal n expr structure =
+  begin match expr.desc with
+	| Ttuple (lst) ->
+	   let rec loop l str =
+	     match l with
+	       [] -> str
+	     | f :: [] ->
+		str ^ "exit(*{ }*))"
+	     | f :: r ->
+		loop r (str ^ "exit(*{ }*), ") in
+	   let str = loop lst "(" in
+	   (* Format.fprintf ppf "tuple@." *)
+	   Format.fprintf ppf "%s@." str
+	| Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
+	   refine_goal n e structure
+	| Tconstr (name, el, _) -> (* record, `name` is its name *)
+	   refine_record name el structure
+	| _ -> Format.fprintf ppf "Error: Not_supported@.";
+	       match_types_expr expr
   end
 
 (* get_matched_variable: int -> string *)
