@@ -192,16 +192,41 @@ let main structure n =
 
 (********** entry point of the expander **********)
 (* type: match or refine *)
-type select_mode = Refine | Match
+type select_mode = Refine | RefineArg | Match
 
 let holenum = ref (-1)
 		  
 (* gensym: unit -> unit *)
 let gensym () = holenum := (!holenum + 1)
+
+let rec match_types_expr expr = match expr.desc with
+    Tvar (_) -> Format.fprintf ppf "Tvar@."
+  | Tarrow (lbl, e1, e2, _) -> Format.fprintf ppf "Tarrow: %s@." lbl;
+			       match_types_expr e1;
+			       match_types_expr e2
+  | Ttuple (el) -> Format.fprintf ppf "Ttuple@.";
+		   List.iter (fun e -> match_types_expr e) el
+  | Tconstr (name, el, _) -> Format.fprintf ppf "Tconstr %a@." Printtyp.path name;
+			     List.iter (fun e -> match_types_expr e) el
+  | Tobject (e, _) -> Format.fprintf ppf "Tobject@.";
+		      match_types_expr e
+  | Tfield (s, _, e1, e2) -> Format.fprintf ppf "Tfield %s@." s;
+			     match_types_expr e1;
+			     match_types_expr e2
+  | Tnil -> Format.fprintf ppf "Tnil@."
+  | Tlink (e) -> Format.fprintf ppf "Tlink@.";
+		 match_types_expr e
+  | Tsubst (e) -> Format.fprintf ppf "Tsubst@.";
+		  match_types_expr e
+  | Tvariant ({row_more=row_more}) -> Format.fprintf ppf "Tvariant@.";
+				      match_types_expr row_more
+  | Tunivar (_) -> Format.fprintf ppf "Tunivar@."
+  | Tpoly (_, _) -> Format.fprintf ppf "Tpoly@."
+  | Tpackage (_, _, _) -> Format.fprintf ppf "Tpackage@."
 			     
-(* refine_goal: int -> type_expr.desc -> Typedtree.structure -> unit *)
-let refine_goal n desc structure =
-  begin match desc with
+(* refine_goal: int -> type_expr -> Typedtree.structure -> unit *)
+let rec refine_goal n expr structure =
+  begin match expr.desc with
 	| Ttuple (lst) -> (* record もやる *)
 	   let rec loop l str =
 	     match l with
@@ -215,12 +240,44 @@ let refine_goal n desc structure =
 	   let str = loop lst "(" in
 	   (* Format.fprintf ppf "tuple@."*)
 	   Format.fprintf ppf "%s@." str
-	| _ -> Format.fprintf ppf "Error: this is not tuple@."
+	| Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
+	   refine_goal n e structure
+	| _ -> Format.fprintf ppf "Error: Not_supported@.";
+	       match_types_expr expr
   end
-    
-(* refine_goal_with_argument: check if the `typ` and the type of goal (i.e. `desc`) is the same *)
-(* refine_goal_with_argument: int -> type_expr -> type_expr_desc -> Typedtree.structure -> unit *)
-let refine_goal_with_argument n typ desc structure = Format.fprintf ppf "Not supported@."
+
+(* is_equal_type: type_expr -> type_expr -> bool *)
+let rec is_equal_type typ1 typ2 =
+  match (typ1.desc, typ2.desc) with
+    (Tvar (Some(s1)), Tvar (Some(s2))) -> ((*Format.fprintf ppf "Tvar: %s %s@." s1 s2; *)
+					   if s1 = s2 then true else false)
+  | (Tvar (None), Tvar (None)) -> ((*Format.fprintf ppf "Tvar: None@."; *) true)
+  | (Tvar (_), Tvar (_)) -> ((*Format.fprintf ppf "Tvar: others@."; *) false)
+  | (Tarrow (_, v1, b1, _), Tarrow (_, v2, b2, _)) -> ((*Format.fprintf ppf "Tarrow@."; *)
+						      (is_equal_type v1 v2) && (is_equal_type b1 b2))
+  | (Ttuple (el1), Ttuple (el2)) -> ((* Format.fprintf ppf "Ttuple@.";*)
+				    if (List.length el1) = (List.length el2)
+				    then List.fold_left (&&) true
+							(List.rev_map2 (fun e1 e2 -> is_equal_type e1 e2) el1 el2)
+				    else false)
+  | (Tconstr (s1, el1, _), Tconstr (s2, el2, _)) -> ((*Format.fprintf ppf "Tconstr@.";*)
+						    if Path.same s1 s2
+						    then List.fold_left (&&) true
+									(List.rev_map2 (fun e1 e2 -> is_equal_type e1 e2) el1 el2)
+						    else false)
+  | (_, Tlink (e)) -> is_equal_type typ1 e
+  | (_, _) -> Format.fprintf ppf "Error: Others@."; false
+  (*
+  | (Tobject (_, _), Tobject (_, _)) -> Format.fprintf ppf "Tobject@."
+  | Tfield (_, _, _, _) -> Format.fprintf ppf "Tfield@."
+  | Tnil -> Format.fprintf ppf "Tnil@."
+  | Tlink (_) -> Format.fprintf ppf "Tlink@."
+  | Tsubst (_) -> Format.fprintf ppf "Tsubst@."
+  | Tvariant (_) -> Format.fprintf ppf "Tvariant@."
+  | Tunivar (_) -> Format.fprintf ppf "Tunivar@."
+  | Tpoly (_, _) -> Format.fprintf ppf "Tpoly@."
+  | Tpackage (_, _, _) -> Format.fprintf ppf "Tpackage@."
+   *)
   
 (* type t_kind: Record or Variant *)
 type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list
@@ -290,7 +347,8 @@ let find_fields typ lst = match typ with
 (* find_type_of_var: string -> env_t -> Types.type_expr *)
 (* type env_t = string * type_expr *)
 let rec find_type_of_var x env = match env with
-    [] -> failwith "variable %s is not found in this scope@." x
+    [] -> let str = Printf.sprintf "variable %s is not found in this scope@." x in
+	  failwith str
   | ((v, typ) :: r) -> if v = x then typ else find_type_of_var x r
 
 (* type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list *)
@@ -363,6 +421,7 @@ let get_matched_variable n =
 (* get_mode: unit -> select_mode *)
 let get_mode () = match Sys.argv.(3) with
     "Refine" -> Refine
+  | "RefineArg" -> RefineArg
   | "Match" -> Match
   | _ -> failwith "select_mode is neither Refine or Match"
 
@@ -381,13 +440,18 @@ let go (structure, coercion) =
 	    let mode = get_mode () in
 	    begin
 	      match mode with
-		Refine ->
-		(* Sys.argv.(4) is "0" with no argument *)
-		let var = Sys.argv.(4) in
-		if var = "0" then refine_goal n typ.desc structure
-		else let typ_of_var = find_type_of_var var env in
-		     refine_goal_with_argument n typ_of_var typ.desc structure
-	      (* n 番目の hole にユーザがどの変数で match したいと入力してるかを取得 *)
+		Refine -> refine_goal n typ structure
+	      | RefineArg -> let var = Sys.argv.(4) in
+			     let typ_of_var = find_type_of_var var env in
+			     if is_equal_type typ_of_var typ then Format.fprintf ppf "%s@." var
+			     else Format.fprintf ppf "Error: Cannot Refine@."
+			     (*
+			     if typ.desc = typ_of_var.desc then Format.fprintf ppf "%s@." var
+			     else Format.fprintf ppf "Error: cannot refine@.";
+			     Format.fprintf ppf "typ.desc: %a, typ_of_var.desc: %a@."
+					    Printtyp.raw_type_expr typ Printtyp.raw_type_expr typ_of_var
+			      *)
+	      (* refine_goal_with_argument var typ_of_var typ structure *)
 	      | Match -> let var = get_matched_variable n in
 			 print_match_expr n var env structure
 	    end
