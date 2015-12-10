@@ -192,7 +192,7 @@ let main structure n =
 
 (********** entry point of the expander **********)
 (* type: match or refine *)
-type select_mode = Refine | RefineArg | Match
+type select_mode = Refine | RefineArg | Match | If
 
 let holenum = ref (-1)
 		  
@@ -447,7 +447,8 @@ let get_mode () = match Sys.argv.(3) with
     "Refine" -> Refine
   | "RefineArg" -> RefineArg
   | "Match" -> Match
-  | _ -> failwith "select_mode is neither Refine or Match"
+  | "If" -> If
+  | _ -> failwith "Error: select_mode is neither Refine or Match"
 
 (* expander の入り口：型の付いた入力プログラムを受け取ってくる *)
 (* Expander.go : Typedtree.structure * Typedtree.module_coercion ->
@@ -478,6 +479,7 @@ let go (structure, coercion) =
 	      (* refine_goal_with_argument var typ_of_var typ structure *)
 	      | Match -> let var = get_matched_variable n in
 			 print_match_expr n var env structure
+	      | If -> Format.fprintf ppf "if exit(*{ }*) then exit(*{ }*) else exit(*{ }*)@."
 	    end
 	  end
 	| _ -> failwith "Expander: module_coercion not supported yet."
