@@ -260,6 +260,7 @@ let rec is_equal_type typ1 typ2 =
   
 (* type t_kind: Record or Variant *)
 type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list
+	      | List
 			 
 (* zip_field: Typedtree.label_declaration -> (string, type_expr list) *)		       
 let zip_field (ld: Typedtree.label_declaration) = match ld with
@@ -277,37 +278,59 @@ let zip_constructor (cd: Typedtree.constructor_declaration) = match cd with
 let zip_constructors (lst: Typedtree.constructor_declaration list) = List.map zip_constructor lst
 
 (* find_constructor: string -> Typedtree.type_declaration list -> t_kind list *)
-let rec find_constructor name lst = match lst with
+let rec find_constructor name lst =
+  match lst with
     [] -> []
   | (declaration :: rest) ->
      begin match declaration with
 	     {typ_id = id; typ_kind = kind} ->
-	     if id.name = name then
 	       begin match kind with
 		       Ttype_record (label_declaration_list) ->
-		       Record (zip_fields label_declaration_list) :: find_constructor name rest
+		       if id.name = name
+		       then Record (zip_fields label_declaration_list) :: find_constructor name rest
+		       else find_constructor name rest
 		     | Ttype_variant (constructor_declaration_list) ->
-			Variant (zip_constructors constructor_declaration_list) :: find_constructor name rest
-		     | _ -> Format.fprintf ppf "@ this is neither record or variant@.";
+			if id.name = name
+			then Variant (zip_constructors constructor_declaration_list) :: find_constructor name rest
+			else find_constructor name rest
+		     | _ -> (* Format.fprintf ppf "this is neither record or variant@.";*)
 			    find_constructor name rest
 	       end
-	     else find_constructor name rest
-	     | _ -> Format.fprintf ppf "this is not Types.type_declaration@.";
+	   | _ -> (* Format.fprintf ppf "this is not Types.type_declaration@."; *)
 		    []
      end
-       
+
+(* print_structure_item: Typedtree.strucre_item -> unit *)
+let print_structure_item item = match item.str_desc with
+    Tstr_eval (_, _) -> Format.fprintf ppf "Tstr_eval@."
+  | Tstr_value (_, _) -> Format.fprintf ppf "Tstr_value@."
+  | Tstr_primitive (_) -> Format.fprintf ppf "Tstr_primitive@."
+  | Tstr_type (_) -> Format.fprintf ppf "Tstr_type@."
+  | Tstr_typext (_) -> Format.fprintf ppf "Tstr_typext@."
+  | Tstr_exception (_) -> Format.fprintf ppf "Tstr_exception@."
+  | Tstr_module (_) -> Format.fprintf ppf "Tstr_module@."
+  | Tstr_recmodule (_) -> Format.fprintf ppf "Tstr_recmodule@."
+  | Tstr_modtype (_) -> Format.fprintf ppf "Tstr_modtype@."
+  | Tstr_open (_) -> Format.fprintf ppf "Tstr_open@."
+  | Tstr_class (_) -> Format.fprintf ppf "Tstr_class@."
+  | Tstr_class_type (_) -> Format.fprintf ppf "Tstr_class_type@."
+  | Tstr_include (_) -> Format.fprintf ppf "Tstr_include@."
+  | Tstr_attribute (_) -> Format.fprintf ppf "Tstr_attribute@."
+    
 (* find_constructors: Path.t -> Typedtree.structure_item list -> t_kind list *)
 (* path (ユーザ定義の variant の名前) の型情報を structure から探す *)
 let rec find_constructors path structure_items =
   match path with
     Pident (ident) ->
     begin match structure_items with
-	    [] -> Format.fprintf ppf "structure_items is empty@.";
-		  raise Not_found
-	  | item :: rest ->
+	    [] -> []
+	  | item :: rest -> (* Format.fprintf ppf "structure_item@.";*)
 	     begin match item.str_desc with
-		     Tstr_type (type_declarations) -> find_constructor ident.name type_declarations
-		   | _ -> find_constructors path rest
+		     Tstr_type (type_declarations) ->
+		     if ident.name = "list" then [List]
+		     else (find_constructor ident.name type_declarations) @ (find_constructors path rest)
+		   | _ -> (* print_structure_item item; *)
+			  find_constructors path rest
 	     end
     end
   | _ -> Format.fprintf ppf "path is not Pident@.";
@@ -326,31 +349,35 @@ let find_fields typ lst = match typ with
 (* find_type_of_var: string -> env_t -> Types.type_expr *)
 (* type env_t = string * type_expr *)
 let rec find_type_of_var x env = match env with
-    [] -> let str = Printf.sprintf "variable %s is not found in this scope@." x in
-	  failwith str
-  | ((v, typ) :: r) -> if v = x then typ else find_type_of_var x r
+    [] -> Format.fprintf ppf "mt@.";
+    let str = Printf.sprintf "variable %s is not found in this scope@." x in
+    failwith str
+  | ((v, typ) :: r) -> (* Format.fprintf ppf "not mt, %s: %a@." v Printtyp.type_expr typ; *)
+		       if v = x
+		       then typ (* e.g. returns "int list" when matching List *)
+		       else find_type_of_var x r
 
 (* type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list *)
 (* print_t_kind: t_kind -> unit *)
 let print_t_kind kind =
   begin match kind with
-	  Record (lst) ->
-	  let s = "{" in
-	  (* Format.fprintf ppf "{@."; *)
-	  let rec loop l str = match l with
-	      [] -> str ^ "} -> exit(*{ }*)"
-	    | [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
-	    | ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
-	  in
-	  gensym ();
-	  let str = loop lst s in
-	  Format.fprintf ppf "%s@." str;
+	  List -> Format.fprintf ppf "[] -> exit(*{ }*)@.";
+		  Format.fprintf ppf "| (var0 :: var1) -> exit(*{ }*)@."
+	| Record (lst) ->
+	   let s = "{" in
+	   (* Format.fprintf ppf "{@."; *)
+	   let rec loop l str = match l with
+	       [] -> str ^ "} -> exit(*{ }*)"
+	     | [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
+	     | ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
+	   in
+	   let str = loop lst s in
+	   Format.fprintf ppf "%s@." str;
 	| Variant (lst) ->
 	   List.iter (fun (name, ts) ->
 		      let length = List.length ts in
 		      if length = 0 then (* e.g. Empty -> hole *)
 			begin
-			  gensym ();
 			  Format.fprintf ppf "| %s -> exit(*{ }*)@." name
 			end
 		      else
@@ -377,10 +404,10 @@ let print_t_kinds var kinds =
 (* match_variable: int -> string -> -> env_t -> Typedtree.structure -> unit *)
 (* 変数 x の型を env から取ってくる -> その型を structure から探して出力 *)
 let print_match_expr n x env structure =
-  let type_of_x = find_type_of_var x env in
-  (* ユーザ定義の型かどうか調べる *)
+  let type_of_x = find_type_of_var x env in (* ユーザ定義の型かどうか調べる, List も "int list" とかが返ってくる *)
   begin match type_of_x.desc with
 	(* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
+	(* e.g. List は Tconstr (list, _, _) *)
 	| Tconstr (path, _, _) -> (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path; *)
 				  let constructors = find_constructors path structure.str_items in
 				  print_t_kinds x constructors
@@ -388,7 +415,7 @@ let print_match_expr n x env structure =
 	| Tlink (typ) -> (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
 			  let fields = find_fields typ structure.str_items in
 			  print_t_kinds x fields
-	| _ -> Format.fprintf ppf "Neither of them@."
+	| _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; match_types_expr type_of_x
   end
 
 (* print_refine_record: t_kind list -> unit *)
@@ -456,7 +483,7 @@ let get_mode () = match Sys.argv.(3) with
 (* ./expander filename n mode Some(var) *)
 let go (structure, coercion) =
   let ppf = Format.formatter_of_out_channel stdout in 
-  (* Format.fprintf ppf "%a@." Printtyped.implementation structure; *)
+(*  Format.fprintf ppf "%a@." Printtyped.implementation structure;*)
   begin match coercion with
 	  Typedtree.Tcoerce_none -> (* main structure *)
 	  begin
