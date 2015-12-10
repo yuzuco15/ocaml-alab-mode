@@ -18,3 +18,8 @@ _build/
 # oasis generated files
 setup.data
 setup.log
+expander
+REPL: OCaml
+expander.d
+main.d
+my_compile.d
