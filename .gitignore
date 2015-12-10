@@ -23,3 +23,5 @@ REPL: OCaml
 expander.d
 main.d
 my_compile.d
+.#test2.ml
+*.cmt
