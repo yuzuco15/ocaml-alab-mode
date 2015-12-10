@@ -1,6 +1,10 @@
 type tree = Empty | Node of tree * int * tree
 
-let rec count (r: tree): ((int * int) * (int * int)) = exit(*{ r}*)0
+let rec count (r: string): ((int * int * int) * (int * int) * string) = ((exit(*{r }*)0, exit(*{ }*)1, exit(*{ }*)2)
+								      , (0, 1
+									)
+								      , r
+								      )
 
 
 
