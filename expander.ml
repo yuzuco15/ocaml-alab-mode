@@ -233,10 +233,10 @@ let rec refine_goal n expr structure =
 	       [] -> str
 	     | f :: [] ->
 		gensym ();
-		str ^ "exit(*{ }*)" ^ (string_of_int !holenum) ^ ")"
+		str ^ "exit(*{ }*))"
 	     | f :: r ->
 		gensym ();
-		loop r (str ^ "exit(*{ }*)" ^ (string_of_int !holenum) ^ ", ") in
+		loop r (str ^ "exit(*{ }*), ") in
 	   let str = loop lst "(" in
 	   (* Format.fprintf ppf "tuple@."*)
 	   Format.fprintf ppf "%s@." str
@@ -359,7 +359,7 @@ let print_t_kind kind =
 	  let s = "{" in
 	  (* Format.fprintf ppf "{@."; *)
 	  let rec loop l str = match l with
-	      [] -> str ^ "} -> exit(*{ }*)" ^ (string_of_int !holenum)
+	      [] -> str ^ "} -> exit(*{ }*)"
 	    | [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
 	    | ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
 	  in
@@ -372,7 +372,7 @@ let print_t_kind kind =
 		      if length = 0 then (* e.g. Empty -> hole *)
 			begin
 			  gensym ();
-			  Format.fprintf ppf "| %s -> exit(*{ }*)%s@." name (string_of_int !holenum)
+			  Format.fprintf ppf "| %s -> exit(*{ }*)@." name
 			end
 		      else
 			let s = "| " ^ name ^ " (" in
@@ -381,7 +381,7 @@ let print_t_kind kind =
 			  | [t] ->
 			     begin
 			       gensym ();
-			       str ^ ("var" ^ string_of_int n) ^ ") -> exit(*{ }*)" ^ (string_of_int !holenum)
+			       str ^ ("var" ^ string_of_int n) ^ ") -> exit(*{ }*)"
 			     end
 			  | (t :: r) ->
 			     loop r (n + 1) (str ^ "var" ^ (string_of_int n) ^ ", ") in
