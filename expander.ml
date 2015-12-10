@@ -405,18 +405,21 @@ let print_t_kinds var kinds =
 (* 変数 x の型を env から取ってくる -> その型を structure から探して出力 *)
 let print_match_expr n x env structure =
   let type_of_x = find_type_of_var x env in (* ユーザ定義の型かどうか調べる, List も "int list" とかが返ってくる *)
-  begin match type_of_x.desc with
-	(* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
-	(* e.g. List は Tconstr (list, _, _) *)
-	| Tconstr (path, _, _) -> (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path; *)
-				  let constructors = find_constructors path structure.str_items in
-				  print_t_kinds x constructors
-	(* e.g. type t = {a = int, b = int} は Tlink (t) *)
-	| Tlink (typ) -> (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
-			  let fields = find_fields typ structure.str_items in
-			  print_t_kinds x fields
-	| _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; match_types_expr type_of_x
-  end
+  let rec loop typ =
+    begin match typ.desc with
+	  (* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
+	  (* e.g. List は Tconstr (list, _, _) *)
+	  | Tconstr (path, _, _) -> (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path; *)
+	     let constructors = find_constructors path structure.str_items in
+	     print_t_kinds x constructors
+	  (* e.g. type t = {a = int, b = int} は Tlink (t) *)
+	  | Tlink (t) -> loop t
+	  (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
+	  (* let fields = find_fields typ structure.str_items in
+			  print_t_kinds x fields *)
+	  | _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; match_types_expr type_of_x
+    end
+  in loop type_of_x
 
 (* print_refine_record: t_kind list -> unit *)
 let print_refine_record kinds =
