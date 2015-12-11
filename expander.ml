@@ -491,40 +491,48 @@ let get_mode () = match Sys.argv.(3) with
   | "ShowGoal" -> ShowGoal
   | _ -> failwith "Error: select_mode is neither Refine or Match"
 
+(* get_type:  Typedtree.structure * Typedtree.module_coercion ->
+                 int -> type_expr * env_t *)
+let get_type (structure, coercion) n =
+  let ppf = Format.formatter_of_out_channel stdout in 
+  (*  Format.fprintf ppf "%a@." Printtyped.implementation structure;*)
+  begin
+    match coercion with
+      Typedtree.Tcoerce_none -> (* main structure *)
+      let (typ, env) = main structure n in (* typ: goal の型, env: スコープ内の変数の型 *)
+      (typ, env)
+    | _ -> failwith "Expander: module_coercion not supported yet."
+  end
+  
 (* expander の入り口：型の付いた入力プログラムを受け取ってくる *)
 (* Expander.go : Typedtree.structure * Typedtree.module_coercion ->
                  Typedtree.structure * Typedtree.module_coercion *)
 (* ./expander filename n mode Some(var) *)
 let go (structure, coercion) =
-  let ppf = Format.formatter_of_out_channel stdout in 
-  (*  Format.fprintf ppf "%a@." Printtyped.implementation structure;*)
-  begin match coercion with
-      Typedtree.Tcoerce_none -> (* main structure *)
-      begin
-	let n = int_of_string Sys.argv.(2) in
- let (typ, env) = main structure n in (* typ: goal の型, env: スコープ内の変数の型 *)
- let mode = get_mode () in
- begin
-   match mode with
-     Refine -> refine_goal n typ structure
-   | RefineArg -> let var = Sys.argv.(4) in
-     let typ_of_var = find_type_of_var var env in
-     if is_equal_type typ_of_var typ then Format.fprintf ppf "%s@." var
-     else Format.fprintf ppf "Error: Cannot Refine@."
-	(*
+  let n = int_of_string Sys.argv.(2) in
+  let mode = get_mode () in
+  begin
+    match mode with
+      Refine -> let (typ, env) = get_type (structure, coercion) n in
+      refine_goal n typ structure
+    | RefineArg -> let (typ, env) = get_type (structure, coercion) n in
+      let var = Sys.argv.(4) in
+      let typ_of_var = find_type_of_var var env in
+      if is_equal_type typ_of_var typ then Format.fprintf ppf "%s@." var
+      else Format.fprintf ppf "Error: Cannot Refine@."
+ (*
 if typ.desc = typ_of_var.desc then Format.fprintf ppf "%s@." var
 else Format.fprintf ppf "Error: cannot refine@.";
 Format.fprintf ppf "typ.desc: %a, typ_of_var.desc: %a@."
 Printtyp.raw_type_expr typ Printtyp.raw_type_expr typ_of_var
 *)
-   (* refine_goal_with_argument var typ_of_var typ structure *)
-   | Match -> let var = get_matched_variable n in
-     print_match_expr n var env structure
-   | If -> Format.fprintf ppf "if exit(*{ }*) then exit(*{ }*) else exit(*{ }*)@."
-   | ShowGoal -> show_goal typ env
- end
-      end
-    | _ -> failwith "Expander: module_coercion not supported yet."
+    (* refine_goal_with_argument var typ_of_var typ structure *)
+    | Match -> let (typ, env) = get_type (structure, coercion) n in
+      let var = get_matched_variable n in
+      print_match_expr n var env structure
+    | If -> Format.fprintf ppf "if exit(*{ }*) then exit(*{ }*) else exit(*{ }*)@."
+    | ShowGoal -> let (typ, env) = get_type (structure, coercion) n in
+      show_goal typ env
   end;
   exit 0;
   (structure, coercion) (* 返り値はこの型にしておく *)
