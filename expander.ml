@@ -6,6 +6,9 @@ open Path
 (* output channel *)
 let ppf = Format.formatter_of_out_channel stdout
 
+(* select_mode *)
+type select_mode = Refine | RefineArg | Match | If | ShowGoal
+
 (********** add types of variables to env **********)
 
 (* 環境の型。Env.t とは別物なのに注意 *)
@@ -160,17 +163,18 @@ and type_of_hole_in_bindings n rec_flag bindings = match bindings with
 
 (* type_of_hole_in_structure : int -> structure_item list ->
                                type_expr * env_t *)
-let rec type_of_hole_in_structure n s_items = match s_items with
-    [] ->
-      Format.fprintf ppf "@[Expander: hole %d is not found.@]@." n;
+let rec type_of_hole_in_structure n s_items =
+  begin match s_items with
+      [] -> Format.fprintf ppf "@[Error (Expander): hole %d is not found.@]@." n;
       exit 0
-  | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
+    | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
       begin try
-        type_of_hole_in_bindings n rec_flag bindings
-      with
-        Not_found -> type_of_hole_in_structure n rest
+          type_of_hole_in_bindings n rec_flag bindings
+        with
+          Not_found -> type_of_hole_in_structure n rest
       end
-  | {str_desc = _} :: rest -> type_of_hole_in_structure n rest
+    | {str_desc = _} :: rest -> type_of_hole_in_structure n rest
+  end
 
 (********** main **********)
 
@@ -191,9 +195,6 @@ let main structure n =
   (typ, env)
 
 (********** entry point of the expander **********)
-(* type: match or refine *)
-type select_mode = Refine | RefineArg | Match | If | ShowGoal
-
 let holenum = ref (-1)
 		  
 (* gensym: unit -> unit *)
@@ -536,33 +537,3 @@ Printtyp.raw_type_expr typ Printtyp.raw_type_expr typ_of_var
   end;
   exit 0;
   (structure, coercion) (* 返り値はこの型にしておく *)
-
-  (*
-何番のゴールに対してか: 入力 n
-match or refine
-どの変数に対して match (or refine) したいか
-
--> match or refine した結果を返す
- *)					       
-
-
-  (* 
- implementation : formatter -> structure -> unit 
-
- structure = {
-  str_items : structure_item list;
-  str_type : Types.signature;
-  str_final_env : Env.t;
-}
-
-structure_item =
-  { str_desc : structure_item_desc; (* <- 結局これを match して print している *)
-    str_loc : Location.t;
-    str_env : Env.t
-  }
-   *)
-  (* (Format.formatter -> 'a -> unit) -> 'a -> unit になっている *)
-  (*
-  Printtyped.implementation (Format.fprintf ppf "typedtree:@]@.") (* typedtree *)
-			    structure; (* Format.formatter がほしい *)
-   *)
