@@ -1,7 +1,7 @@
 SOURCES = expander.ml my_compile.ml main.ml
 PACKS = compiler-libs.common compiler-libs.bytecomp
 RESULT = expander
-OCAMLMAKEFILE = /Users/YukiIshii/lab/expander/OCamlMakefile
+OCAMLMAKEFILE = OCamlMakefile
 include $(OCAMLMAKEFILE)
 
 go :
