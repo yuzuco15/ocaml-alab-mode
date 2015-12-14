@@ -14,6 +14,10 @@ check if you successfully made `expander*`
 
 2. load `hole.el` to your Emacs
 
+3. load the key bindings
+
+`M-x set-alab-mode-key`
+
 ## key-words
 * `hole`
 This is the OCaml expression `exit(*{ }*)`, or the real appearance of `goal`.
