@@ -2,6 +2,7 @@ open Asttypes
 open Typedtree
 open Types
 open Path
+open Printtypes
 
 (* output channel *)
 let ppf = Format.formatter_of_out_channel stdout
@@ -301,11 +302,22 @@ let rec find_constructor name lst =
 	   | _ -> (* Format.fprintf ppf "this is not Types.type_declaration@."; *)
 		    []
      end
+(* print_expression_desc: Typedtree.expression_desc -> unit *)
+let print_expression_desc ed = match ed with
+    Texp_ident (path, _, _) -> Format.fprintf ppf "Texp_ident: path %a@." Printtyp.path path
+  | _ -> Format.fprintf ppf "Typedtree.expression is not Texp_ident@."
+  
+(* print_expression: Typedtree.expression -> unit *)
+let print_expression e = match e with
+    {exp_type = exp_type} -> Format.fprintf ppf "exp_type: %a@." Printtyp.type_expr exp_type
 
+(* print_value_biding_list: Typedtree.value_biding list -> unit *)
+let print_value_biding_list vl = List.iter (fun {vb_expr = vb_expr} -> print_expression vb_expr) vl
+  
 (* print_structure_item: Typedtree.strucre_item -> unit *)
 let print_structure_item item = match item.str_desc with
     Tstr_eval (_, _) -> Format.fprintf ppf "Tstr_eval@."
-  | Tstr_value (_, _) -> Format.fprintf ppf "Tstr_value@."
+  | Tstr_value (_, vl) -> (Format.fprintf ppf "Tstr_value@."; print_value_biding_list vl)
   | Tstr_primitive (_) -> Format.fprintf ppf "Tstr_primitive@."
   | Tstr_type (_) -> Format.fprintf ppf "Tstr_type@."
   | Tstr_typext (_) -> Format.fprintf ppf "Tstr_typext@."
@@ -329,9 +341,9 @@ let rec find_constructors path structure_items =
 	  | item :: rest -> (* Format.fprintf ppf "structure_item@.";*)
 	     begin match item.str_desc with
 		     Tstr_type (type_declarations) ->
-		     if ident.name = "list" then [List]
-		     else (find_constructor ident.name type_declarations) @ (find_constructors path rest)
-		   | _ -> (* print_structure_item item; *)
+		     if ident.name = "list" then (Format.fprintf ppf "this is a list@."; [List])
+		     else (Format.fprintf ppf "this is a list@."; (find_constructor ident.name type_declarations) @ (find_constructors path rest))
+		   | _ -> print_structure_item item;
 			  find_constructors path rest
 	     end
     end

@@ -1,4 +1,4 @@
-SOURCES = expander.ml my_compile.ml main.ml
+SOURCES = printtypes.ml expander.ml my_compile.ml main.ml
 PACKS = compiler-libs.common compiler-libs.bytecomp
 RESULT = expander
 OCAMLMAKEFILE = OCamlMakefile
