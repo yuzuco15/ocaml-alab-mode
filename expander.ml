@@ -198,7 +198,7 @@ let main structure n =
 (********** entry point of the expander **********)
 (* type t_kind: Record or Variant *)
 type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list
-	      | List
+	      | List | Tuple of string list
 			 
 (* zip_field: Typedtree.label_declaration -> (string, type_expr list) *)		       
 let zip_field (ld: Typedtree.label_declaration) = match ld with
@@ -237,11 +237,28 @@ let rec find_constructor name lst =
 	   | _ -> (* Format.fprintf ppf "this is not Types.type_declaration@."; *)
 		    []
      end
+
+(* get_path_name: Path.t -> string *)
+let get_path_name path = match path with
+    Pident (ident) -> ident.name
+  | _ -> failwith "Error: path is not Pident@."
     
 (* find_constructors: Path.t -> Typedtree.structure_item list -> t_kind list *)
 (* path (ユーザ定義の variant の名前) の型情報を structure から探す *)
 let rec find_constructors path structure_items =
-  match path with
+  let name = get_path_name path in
+  if name = "list" then [List]
+    else
+      begin match structure_items with
+          [] -> []
+        | item :: rest ->
+          begin match item.str_desc with
+              Tstr_type (type_declarations) -> (find_constructor name type_declarations) @ (find_constructors path rest)
+            | _ -> find_constructors path rest
+          end
+      end
+  
+ (* match path with
     Pident (ident) ->
     if ident.name = "list" then [List]
     else
@@ -254,7 +271,7 @@ let rec find_constructors path structure_items =
           end
       end
   | _ -> Format.fprintf ppf "path is not Pident@.";
-    raise Not_found
+    raise Not_found *)
 
 (* find_fields: Types.type_expr -> Typedtree.type_declaration list -> t_kind list *)
 let find_fields typ lst = match typ with
@@ -281,45 +298,59 @@ let rec find_type_of_var x env = match env with
 (* print_t_kind: t_kind -> unit *)
 let print_t_kind kind =
   begin match kind with
-	  List -> Format.fprintf ppf "[] -> (exit(*{}*)0)@.";
-		  Format.fprintf ppf "| (var0 :: var1) -> (exit(*{}*)0)@."
-	| Record (lst) ->
-	   let s = "{" in
-	   (* Format.fprintf ppf "{@."; *)
-	   let rec loop l str = match l with
-	       [] -> str ^ "} -> (exit(*{}*)0)"
-	     | [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
-	     | ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
-	   in
-	   let str = loop lst s in
-	   Format.fprintf ppf "%s@." str;
-	| Variant (lst) ->
-	   List.iter (fun (name, ts) ->
-		      let length = List.length ts in
-		      if length = 0 then (* e.g. Empty -> hole *)
-			begin
-			  Format.fprintf ppf "| %s -> (exit(*{}*)0)@." name
-			end
-		      else
-			let s = "| " ^ name ^ " (" in
-			let rec loop lst n str = match lst with
-			    [] -> str
-			  | [t] ->
-			     begin
-			       str ^ ("var" ^ string_of_int n) ^ ") -> (exit(*{}*)0)"
-			     end
-			  | (t :: r) ->
-			     loop r (n + 1) (str ^ "var" ^ (string_of_int n) ^ ", ") in
-			let str = loop ts 0 s in
-		     Format.fprintf ppf "%s@." str)
-		     lst
+      List -> Format.fprintf ppf "[] -> (exit(*{}*)0)@.";
+      Format.fprintf ppf "| (var0 :: var1) -> (exit(*{}*)0)@."
+    | Tuple (lst) ->
+      let s = "(" in
+      let rec loop l str n = match l with
+          [f] -> str ^ "var" ^ (string_of_int n) ^ ") -> (exit(*{}*)0)"
+        | (_ :: rest) -> loop rest (str ^ "var" ^ (string_of_int n) ^ ", ") (n + 1) in
+      let str = loop lst s 0 in
+      Format.fprintf ppf "%s@." str
+    | Record (lst) ->
+      let s = "{" in
+      (* Format.fprintf ppf "{@."; *)
+      let rec loop l str = match l with
+	  [] -> str ^ "} -> (exit(*{}*)0)"
+	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
+	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
+      in
+      let str = loop lst s in
+      Format.fprintf ppf "%s@." str;
+    | Variant (lst) ->
+      List.iter (fun (name, ts) ->
+	  let length = List.length ts in
+	  if length = 0 then (* e.g. Empty -> hole *)
+	    begin
+	      Format.fprintf ppf "| %s -> (exit(*{}*)0)@." name
+	    end
+	  else
+	    let s = "| " ^ name ^ " (" in
+	    let rec loop lst n str = match lst with
+		[] -> str
+	      | [t] ->
+		begin
+		  str ^ ("var" ^ string_of_int n) ^ ") -> (exit(*{}*)0)"
+		end
+	      | (t :: r) ->
+		loop r (n + 1) (str ^ "var" ^ (string_of_int n) ^ ", ") in
+	    let str = loop ts 0 s in
+	    Format.fprintf ppf "%s@." str)
+	lst
   end
       
 (* print_constructors: string -> t_kind list -> unit *)
 let print_t_kinds var kinds =
   Format.fprintf ppf "match %s with@." var;
   List.iter print_t_kind kinds
-	    
+
+(* make_kinds_of_tuple: type_expr list -> t_kind list (Tuple [string; ...]) *)
+let make_kinds_of_tuple el = let rec f e = match e.desc with
+      Tconstr (path, _, _) -> get_path_name path
+    | Tlink (e1) -> f e1
+    | _ -> Format.fprintf ppf "Error: This is not a tuple@."; raise Not_found in
+  [Tuple (List.map f el)]
+
 (* match_variable: int -> string -> -> env_t -> Typedtree.structure -> unit *)
 (* 変数 x の型を env から取ってくる -> その型を structure から探して出力 *)
 let print_match_expr n x env structure =
@@ -327,17 +358,19 @@ let print_match_expr n x env structure =
   (* match_types_expr type_of_x; *)
   let rec loop typ =
     begin match typ.desc with
-	  (* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
-	  (* e.g. List は Tconstr (list, _, _) *)
+      (* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
+      (* e.g. List は Tconstr (list, _, _) *)
       | Tconstr (path, _, _) -> (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path; *)
-	     let constructors = find_constructors path structure.str_items in
-	     print_t_kinds x constructors
-	  (* e.g. type t = {a = int, b = int} は Tlink (t) *)
-	  | Tlink (t) -> loop t
-	  (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
-	  (* let fields = find_fields typ structure.str_items in
-			  print_t_kinds x fields *)
-   | _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; (* match_types_expr type_of_x *)
+	let constructors = find_constructors path structure.str_items in
+	print_t_kinds x constructors
+      (* e.g. type t = {a = int, b = int} は Tlink (t) *)
+      | Tlink (t) -> loop t
+      (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
+      (* let fields = find_fields typ structure.str_items in
+	 print_t_kinds x fields *)
+      (* tuple: Ttuple [Tconstr int; Tconstr int; ...] *)
+      | Ttuple (el) -> let kinds = make_kinds_of_tuple el in print_t_kinds x kinds
+      | _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; match_types_expr type_of_x
     end
   in loop type_of_x
 
@@ -367,24 +400,24 @@ let refine_record path el structure =
 (* refine_goal: int -> type_expr -> Typedtree.structure -> unit *)
 let rec refine_goal n expr structure =
   begin match expr.desc with
-	| Ttuple (lst) ->
-	   let rec loop l str =
-	     match l with
-	       [] -> str
-	     | f :: [] ->
-		str ^ "(exit(*{}*)0))"
-	     | f :: r ->
-		loop r (str ^ "(exit(*{}*)0), ") in
-	   let str = loop lst "(" in
-	   (* Format.fprintf ppf "tuple@." *)
-    Format.fprintf ppf "%s@." str
-	| Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
-   refine_goal n e structure
- | Tlink (e) -> refine_goal n e structure
-	| Tconstr (name, el, _) -> (* record, `name` is its name *)
-	   refine_record name el structure
-	| _ -> Format.fprintf ppf "Error: Not_supported@.";
-	       match_types_expr expr
+    | Ttuple (lst) ->
+      let rec loop l str =
+	match l with
+	  [] -> str
+	| f :: [] ->
+	  str ^ "(exit(*{}*)0))"
+	| f :: r ->
+	  loop r (str ^ "(exit(*{}*)0), ") in
+      let str = loop lst "(" in
+      (* Format.fprintf ppf "tuple@." *)
+      Format.fprintf ppf "%s@." str
+    | Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
+      refine_goal n e structure
+    | Tlink (e) -> refine_goal n e structure
+    | Tconstr (name, el, _) -> (* record, `name` is its name *)
+      refine_record name el structure
+    | _ -> Format.fprintf ppf "Error: Not_supported@.";
+      match_types_expr expr
   end
 
 (* show_goal: type_expr -> env_t -> unit *)
