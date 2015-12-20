@@ -255,7 +255,7 @@ modified."
 		(insert answer)
 		(ocp-indent-buffer)
 		(save-buffer)
-		;;(agda2-go)
+		(agda2-go)
 		)
 	      )
 	    (kill-buffer "expander-buffer")
@@ -352,11 +352,11 @@ modified."
     (if (re-search-backward "(exit(\\*{" nil t 1)
 	(let ((p (point))) ;; <p>(exit(\\*{
 	  (if (re-search-forward "}\\*)[0-9]+)" nil t 1)
-	      (let ((q (- (point) 3))) ;; }\\*)n)<q>
+	      (let ((q (point))) ;; }\\*)n)<q>
 	;; 	(if (re-search-forward "[0-9]+" nil t 1)
 ;; 		    (let ((r (point)))
 ;; ;;		      (print "delete-region")
-		      (delete-region p r)))))))
+		      (delete-region p q)))))))
 
 (defun delete-lays (lays)
   (let (value)
