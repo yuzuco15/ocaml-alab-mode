@@ -174,7 +174,16 @@ modified."
 (defun put-hole ()
   (interactive)
   (insert "exit(*{ }*)")
+  (agda2-go)
   )
+
+(defun delete-expression (expression)
+       (goto-char (point))
+       (let ((end (point)))
+	 (if (re-search-backward expression nil t 1)
+	     (let ((start (point)))
+	       (delete-region start end)))))
+	   
 
 (defun refine-goal-with-argument () ;; need to compile to type check
   (interactive)
@@ -201,10 +210,14 @@ modified."
 	(let ((answer (with-current-buffer "expander-buffer"
 			(buffer-string))
       			))
-	  (if (or (string-match "Error:*" answer)  (string-match "Warning*" answer))
-	      (message "%s" answer)
+	  (if (or (string-match "Error*" answer)  (string-match "Warning*" answer))
+	      ;; delete `word` and insert hole
+	      (progn
+		(delete-expression word)
+		(put-hole)
+		(message "Cannot Refine:\n%s" answer))
 	    (progn
-	      (insert answer)
+	      ;; (insert word)
 	      (ocp-indent-buffer)
 	      (save-buffer)
 	      (agda2-go) ;; reset all the hole numbers
