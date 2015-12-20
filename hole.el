@@ -177,7 +177,7 @@ modified."
   (if (re-search-backward "}\\*)" nil t 1)
       (let* ((expend (point)) ;; <start>(exit(*{...<expend>}*)n)<end>
 	     (expression (buffer-substring (+ start 8) expend)))
-	(message expression)
+	;;(message expression)
 	expression)))
 
 
@@ -271,14 +271,13 @@ modified."
 	 (range (agda2-range-of-goal (car (cdr overlay_and_position))))
 	 (start (car range))
 	 (end (car (last range)))
-	 (word (buffer-substring (+ start 7) (- end 4)))
-	 (var (get-variable word))
+	 (expression (get-expression start end))
     	 (filename (buffer-file-name))
 	 (num (get-hole-number)))
      (progn
        (generate-new-buffer "expander-buffer")
        (save-buffer)
-       (call-process path nil "expander-buffer" nil filename num "Match" var)
+       (call-process path nil "expander-buffer" nil filename num "Match" expression)
        (progn
 	 (let ((answer (with-current-buffer "expander-buffer"
 			 (buffer-string))
