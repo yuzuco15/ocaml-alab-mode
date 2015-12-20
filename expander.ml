@@ -294,7 +294,6 @@ let rec find_type_of_var x env = match env with
 		       then typ (* e.g. returns "int list" when matching List *)
 		       else find_type_of_var x r
 
-(* type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list *)
 (* print_t_kind: t_kind -> unit *)
 let print_t_kind kind =
   begin match kind with
@@ -355,7 +354,6 @@ let make_kinds_of_tuple el = let rec f e = match e.desc with
 (* 変数 x の型を env から取ってくる -> その型を structure から探して出力 *)
 let print_match_expr n x env structure =
   let type_of_x = find_type_of_var x env in (* ユーザ定義の型かどうか調べる, List も "int list" とかが返ってくる *)
-  (* match_types_expr type_of_x; *)
   let rec loop typ =
     begin match typ.desc with
       (* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)

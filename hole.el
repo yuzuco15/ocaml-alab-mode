@@ -172,9 +172,14 @@ modified."
 ;; 12. begin ... end
 ;; 14. support show-goal (and its env): split-window, generate-new-buffer etc.*
 
-(defun get-variable (word)
-  (string-match "[a-z0-9A-Z]+" word)
-  (match-string 0 word))
+(defun get-expression (start end) ;; <start>(exit(*{}*)n)<end>
+  (goto-char end)
+  (if (re-search-backward "}\\*)" nil t 1)
+      (let* ((expend (point)) ;; <start>(exit(*{...<expend>}*)n)<end>
+	     (expression (buffer-substring (+ start 8) expend)))
+	(message expression)
+	expression)))
+
 
 (defun put-hole ()
   (interactive)
@@ -194,16 +199,15 @@ modified."
   (interactive)
   (let* ((overlay_and_position (agda2-goal-at (point)))
 	 (range (agda2-range-of-goal (car (cdr overlay_and_position))))
-	 (start (car range))
+	 (start (car range)) ;; <start>(exit(*{}*)n)<end>
 	 (end (car (last range)))
-	 (word (buffer-substring (+ start 8) (- end 4)))
-	 (var (get-variable word))
+	 (expression (get-expression start end))
     	 (filename (buffer-file-name))
 	 (num (get-hole-number)))
     (progn
       ;; delete this hole and insert the expression that user input
       (agda2-reset) ;; delete this hole
-      (insert var) ;; insert expression ;; TODO: fix the regular expression to get `var`
+      (insert expression) ;; insert expression ;; TODO: fix the regular expression to get `var`
       ;; create buffer for return value from expander
       (generate-new-buffer "expander-buffer")
       ;; save
@@ -211,14 +215,14 @@ modified."
       (let ((refine-buffer (buffer-name))) ;; current buffer name
       	;;	(split-window-below)
       	;;	(set-window-buffer nil "expander-buffer")
-      	(call-process path nil "expander-buffer" nil filename num "RefineArg" var)
+      	(call-process path nil "expander-buffer" nil filename num "RefineArg" expression)
 	(let ((answer (with-current-buffer "expander-buffer"
 			(buffer-string))
       			))
 	  (if (or (string-match "Error*" answer)  (string-match "Warning*" answer))
 	      ;; delete `word` and insert hole
 	      (progn
-		(delete-expression var)
+		(delete-expression expression)
 		(put-hole)
 		(message "Cannot Refine:\n%s" answer))
 	    (progn
