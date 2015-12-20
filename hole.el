@@ -196,14 +196,14 @@ modified."
 	 (range (agda2-range-of-goal (car (cdr overlay_and_position))))
 	 (start (car range))
 	 (end (car (last range)))
-	 (word (buffer-substring (+ start 7) (- end 4)))
+	 (word (buffer-substring (+ start 8) (- end 4)))
 	 (var (get-variable word))
     	 (filename (buffer-file-name))
 	 (num (get-hole-number)))
     (progn
       ;; delete this hole and insert the expression that user input
       (agda2-reset) ;; delete this hole
-      (insert word) ;; insert expression ;; TODO: fix the regular expression to get `word`
+      (insert var) ;; insert expression ;; TODO: fix the regular expression to get `var`
       ;; create buffer for return value from expander
       (generate-new-buffer "expander-buffer")
       ;; save
@@ -218,11 +218,10 @@ modified."
 	  (if (or (string-match "Error*" answer)  (string-match "Warning*" answer))
 	      ;; delete `word` and insert hole
 	      (progn
-		(delete-expression word)
+		(delete-expression var)
 		(put-hole)
 		(message "Cannot Refine:\n%s" answer))
 	    (progn
-	      ;; (insert word)
 	      (ocp-indent-buffer)
 	      (save-buffer)
 	      (agda2-go) ;; reset all the hole numbers
