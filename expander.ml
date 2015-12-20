@@ -196,11 +196,6 @@ let main structure n =
   (typ, env)
 
 (********** entry point of the expander **********)
-let holenum = ref (-1)
-		  
-(* gensym: unit -> unit *)
-let gensym () = holenum := (!holenum + 1)
-
 (* type t_kind: Record or Variant *)
 type t_kind = Record of (string * core_type list) list | Variant of (string * core_type list) list
 	      | List
@@ -286,13 +281,13 @@ let rec find_type_of_var x env = match env with
 (* print_t_kind: t_kind -> unit *)
 let print_t_kind kind =
   begin match kind with
-	  List -> Format.fprintf ppf "[] -> exit(*{ }*)@.";
-		  Format.fprintf ppf "| (var0 :: var1) -> exit(*{ }*)@."
+	  List -> Format.fprintf ppf "[] -> (exit(*{}*)0)@.";
+		  Format.fprintf ppf "| (var0 :: var1) -> (exit(*{}*)0)@."
 	| Record (lst) ->
 	   let s = "{" in
 	   (* Format.fprintf ppf "{@."; *)
 	   let rec loop l str = match l with
-	       [] -> str ^ "} -> exit(*{ }*)"
+	       [] -> str ^ "} -> (exit(*{}*)0)"
 	     | [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
 	     | ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
 	   in
@@ -303,7 +298,7 @@ let print_t_kind kind =
 		      let length = List.length ts in
 		      if length = 0 then (* e.g. Empty -> hole *)
 			begin
-			  Format.fprintf ppf "| %s -> exit(*{ }*)@." name
+			  Format.fprintf ppf "| %s -> (exit(*{}*)0)@." name
 			end
 		      else
 			let s = "| " ^ name ^ " (" in
@@ -311,8 +306,7 @@ let print_t_kind kind =
 			    [] -> str
 			  | [t] ->
 			     begin
-			       gensym ();
-			       str ^ ("var" ^ string_of_int n) ^ ") -> exit(*{ }*)"
+			       str ^ ("var" ^ string_of_int n) ^ ") -> (exit(*{}*)0)"
 			     end
 			  | (t :: r) ->
 			     loop r (n + 1) (str ^ "var" ^ (string_of_int n) ^ ", ") in
@@ -356,8 +350,8 @@ let print_refine_record kinds =
       (* Format.fprintf ppf "{@."; *)
       let rec loop l str = match l with
 	  [] -> str ^ "}"
-	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ "exit(*{ }*)")
-	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ "exit(*{ }*)" ^ ", ")
+	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ "(exit(*{}*)0)")
+	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ "(exit(*{}*)0)" ^ ", ")
       in
       let str = loop lst s in
       Format.fprintf ppf "%s@." str;
@@ -378,14 +372,15 @@ let rec refine_goal n expr structure =
 	     match l with
 	       [] -> str
 	     | f :: [] ->
-		str ^ "exit(*{ }*))"
+		str ^ "(exit(*{}*)0))"
 	     | f :: r ->
-		loop r (str ^ "exit(*{ }*), ") in
+		loop r (str ^ "(exit(*{}*)0), ") in
 	   let str = loop lst "(" in
 	   (* Format.fprintf ppf "tuple@." *)
-	   Format.fprintf ppf "%s@." str
+    Format.fprintf ppf "%s@." str
 	| Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
-	   refine_goal n e structure
+   refine_goal n e structure
+ | Tlink (e) -> refine_goal n e structure
 	| Tconstr (name, el, _) -> (* record, `name` is its name *)
 	   refine_record name el structure
 	| _ -> Format.fprintf ppf "Error: Not_supported@.";
@@ -445,7 +440,7 @@ let go (structure, coercion) =
     | Match -> let (typ, env) = get_type (structure, coercion) n in
       let var = get_matched_variable n in
       print_match_expr n var env structure
-    | If -> Format.fprintf ppf "if exit(*{ }*) then exit(*{ }*) else exit(*{ }*)@."
+    | If -> Format.fprintf ppf "if (exit(*{}*)0) then (exit(*{}*)0) else (exit(*{}*)0)@."
     | ShowGoal -> let (typ, env) = get_type (structure, coercion) n in
       show_goal typ env
   end;
