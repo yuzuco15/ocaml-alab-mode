@@ -1,6 +1,8 @@
 ;; set the path to expander*
 (defvar path "/Users/YukiIshii/lab/expander/expander")
 
+(defvar hole "(exit(*{}*)0)")
+
 (defun set-alab-mode-key ()
   (interactive)
   (mapc 'set-global-key '(
@@ -70,12 +72,12 @@ Modification hooks are also disabled."
 				  agda2-delim2 t))
 
 (defun agda2-make-goal (p q r)
-  "Make a goal at exit(\*{<p>...<q>}\*)n<r>."
+  "Make a goal at (exit(\*{<p><q>}\*)n)<r>."
   (annotation-preserve-mod-p-and-undo
-   (let ((n (buffer-substring (+ q 3) r))
-	 (o (make-overlay (- p 7) r nil t nil)))
+   (let ((n (buffer-substring (+ q 3) (- r 1)))
+	 (o (make-overlay (- p 8) r nil t nil)))
       ;;(print n)
-      (add-text-properties (- p 7) p '(category agda2-delim1))
+      (add-text-properties (- p 8) p '(category agda2-delim1))
       (add-text-properties q r '(category agda2-delim2))
       (overlay-put o 'agda2-gn           n)
       (overlay-put o 'modification-hooks '(agda2-protect-goal-markers))
@@ -119,35 +121,38 @@ modified."
   )
 
 (defun agda2-search-goal ()
-  (if (re-search-forward "exit(\\*{" nil t 1)
-    (let ((p (point))) ;; exit(\\*{<p>...
+  (if (re-search-forward "(exit(\\*{" nil t 1)
+    (let ((p (point))) ;; (exit(\\*{<p>...
       (if (re-search-forward "}\\*)" nil t 1)
 	  (progn
 	    (let ((q (- (point) 3))) ;; <q>}\\*)
 	      ;; remove hole number if the hole has
 	      (goto-char q)
-	      (cond ((re-search-forward "}\\*)[ \t\n\r\f\v]" nil t 1)
-		     (let ((start (- (point) 1))) ;; }\\*)<start>
-		       ;; no need to delete hole number
-		       (progn
-			 (insert-hole-number start)
-			 (goto-char q)
-			 (if (re-search-forward "}\\*)[0-9]+" nil t 1)
-			     (let ((r (point))) ;; }\\*)123<r>
-			       (agda2-make-goal p q r)))
-		       )))
+	      (cond ;; ((re-search-forward "}\\*)[ \t\n\r\f\v]" nil t 1)
+		    ;;  (let ((start (- (point) 1))) ;; }\\*)<start>
+		    ;;    ;; no need to delete hole number
+		    ;;    (progn
+		    ;; 	 (insert-hole-number start)
+		    ;; 	 (goto-char q)
+		    ;; 	 (if (re-search-forward "}\\*)[0-9]+)" nil t 1)
+		    ;; 	     (let ((r (point))) ;; }\\*)n)<r>
+		    ;; 	       (agda2-make-goal p q r)))
+		    ;;    )))
 		    ((re-search-forward "}\\*)[0-9]+" nil t 1)
+		     ;; need to delete hole number
 		     (progn
-		       (let ((end (point))) ;; }\\*)[0-9]+<end>
-			 (re-search-backward "[0-9]+" nil t 1)
-			 (let ((start (point))) ;; }\\*)<start>[0-9]+
-			   (delete-region start end)
+		       (let ((end (point))) ;; }\\*)[0-9]+<end>)
+			 (re-search-backward ")[0-9]+" nil t 1)
+			 (let ((start (+ 1 (point)))) ;; }\\*)<start>[0-9]+<end>)
+			   (delete-region start end) ;; delete hole number
 			   (insert-hole-number start)
-			   (let ((r (point))) ;; }\\*)123<r>
-			     (agda2-make-goal p q r)
-			   ))))
-		     )))
-	      )))))
+			   (goto-char start)
+			   (if (re-search-forward "[0-9]+)") ;; [0-9]+)<r>
+			       (let ((r (point))) ;; (exit(\\*{<p><q>}\\*)n)<r>
+				 (agda2-make-goal p q r)
+				 ))))
+		       )))
+	      ))))))
 
 (defun agda2-go ()
   (interactive)
@@ -173,7 +178,7 @@ modified."
 
 (defun put-hole ()
   (interactive)
-  (insert "exit(*{ }*)")
+  (insert hole)
   (agda2-go)
   )
 
@@ -225,33 +230,6 @@ modified."
 	  (kill-buffer "expander-buffer")
       	    ))
       )))
-      
-      ;; ;; create buffer for return value from expander
-      ;; (generate-new-buffer "expander-buffer")
-      ;; ;; save
-      ;; (save-buffer)
-      ;; (let ((refine-buffer (buffer-name))) ;; current buffer name
-      ;; 	;;	(split-window-below)
-      ;; 	;;	(set-window-buffer nil "expander-buffer")
-      ;; 	(call-process "/Users/YukiIshii/lab/expander/expander" nil "expander-buffer" nil filename num "RefineArg" var)
-      ;; 	(progn
-      ;; 	  (let ((answer (with-current-buffer "expander-buffer"
-      ;; 			  (buffer-string))
-      ;; 			))
-      ;; 	    (if (or (string-match "Error:*" answer)  (string-match "Warning*" answer))
-      ;; 		(message "%s" answer)
-      ;; 	      (progn
-      ;; 		(print answer)
-      ;; 		(agda2-reset)
-      ;; 		(insert answer)
-      ;; 		(ocp-indent-buffer)
-      ;; 		(save-buffer)
-      ;; 		(agda2-go) ;; reset all the hole numbers
-      ;; 		)
-      ;; 	      )
-      ;; 	    (kill-buffer "expander-buffer")
-      ;; 	    ))
-      ;; 	  ))))
   
  (defun refine-goal ()
   (interactive)
@@ -371,15 +349,14 @@ modified."
     (agda2-search-hole-backward)
     (goto-char (point))
     ;; remove hole
-    (if (re-search-backward "exit(\\*{" nil t 1)
-	(let ((p (point)))
-	  (if (re-search-forward "}\\*)" nil t 1)
-	      (let ((q (- (point) 3)))
-		(if (re-search-forward "[0-9]+" nil t 1)
-		    (let ((r (point)))
-;;		      (print "delete-region")
+    (if (re-search-backward "(exit(\\*{" nil t 1)
+	(let ((p (point))) ;; <p>(exit(\\*{
+	  (if (re-search-forward "}\\*)[0-9]+)" nil t 1)
+	      (let ((q (- (point) 3))) ;; }\\*)n)<q>
+	;; 	(if (re-search-forward "[0-9]+" nil t 1)
+;; 		    (let ((r (point)))
+;; ;;		      (print "delete-region")
 		      (delete-region p r)))))))
-    ))
 
 (defun delete-lays (lays)
   (let (value)
@@ -396,16 +373,16 @@ modified."
       )))
 
 (defun agda2-search-hole-backward ()
-  (if (re-search-backward "exit(\\*{" nil t 1)
-    (let ((p (point)))
+  (if (re-search-backward "(exit(\\*{" nil t 1)
+    (let ((p (point))) ;; (exit(\\*{<p>
       (if (re-search-forward "}\\*)" nil t 1)
-	(let ((q (point)))
-	  (if (re-search-forward "[0-9]+" nil t 1)
-	      (let* ((r (point))
+	(let ((q (point))) ;; }\\*)<q>
+	  (if (re-search-forward "[0-9]+)" nil t 1)
+	      (let* ((r (point)) ;; [0-9]+)<r>
 		     (lays (overlays-in p r)))
 		(delete-lays lays) ;; delete hole number and highlight
-		;; remove text properties -> exit(*{ }*)n appears
-		(remove-text-properties (- p 7) p '(category agda2-delim1))
+		;; remove text properties -> (exit(*{ }*)n) appears
+		(remove-text-properties (- p 8) p '(category agda2-delim1))
 		(remove-text-properties (- q 3) r '(category agda2-delim2))
 		(goto-char (point))
 	  	)
@@ -414,16 +391,16 @@ modified."
 
 ;; clear all the holes in *.ml
 (defun agda2-search-hole ()
-  (if (re-search-forward "exit(\\*{" nil t 1)
+  (if (re-search-forward "(exit(\\*{" nil t 1)
     (let ((p (point)))
       (if (re-search-forward "}\\*)" nil t 1)
 	(let ((q (point)))
-	  (if (re-search-forward "[0-9]+" nil t 1)
+	  (if (re-search-forward "[0-9]+)" nil t 1)
 	      (let* ((r (point))
 		     (lays (overlays-in p r)))
 		(delete-lays lays) ;; delete hole number and highlight
 		;; remove text properties -> exit(*{ }*)n appears
-		(remove-text-properties (- p 7) p '(category agda2-delim1))
+		(remove-text-properties (- p 8) p '(category agda2-delim1))
 		(remove-text-properties (- q 3) r '(category agda2-delim2))
 		(goto-char (point))
 	  	)
