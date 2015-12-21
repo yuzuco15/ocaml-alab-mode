@@ -1,11 +1,17 @@
 # ocaml-alab-mode
 
-## Requires
+## Requirements
 * OCaml 4.02.1
 * Cocoa Emacs / Aquamacs
 * ocp-indent
 
 ## Install
+0. set the path in hole.el
+```
+;; set the path to expander*
+(defvar path "THE PATH TO expander")
+```
+
 1. compile the source
 
 `make`
