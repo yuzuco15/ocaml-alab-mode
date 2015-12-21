@@ -366,7 +366,7 @@ let print_refine_record kinds =
       let rec loop l str = match l with
 	  [] -> str ^ "}"
 	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ "(exit(*{}*)0)")
-	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ "(exit(*{}*)0)" ^ ", ")
+	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ "(exit(*{}*)0)" ^ "; ")
       in
       let str = loop lst s in
       Format.fprintf ppf "%s@." str;
