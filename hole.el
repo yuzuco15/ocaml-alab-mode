@@ -346,17 +346,6 @@ modified."
 	  (kill-buffer "expander-buffer")
 	  )))))
 
-(defun get-hole-number ()
-   (goto-char (point))
-   (if (re-search-backward "{" nil t 1)
-       ;;(let ((p (point)))
-       (if (re-search-forward "}" nil t 1)
-	   ;;(let ((q (- (point) 3)))
-	   (if (re-search-forward "[0-9]+" nil t 1)
-	       (let ((r (point)))
-		 (buffer-substring (- r 1) r)
-		 )))))
-
 ;; erase hole
 ;;  (add-text-properties (- p 7) p '(category agda2-delim1))
 ;;  (add-text-properties q r '(category agda2-delim2))
