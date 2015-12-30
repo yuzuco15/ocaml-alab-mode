@@ -302,7 +302,7 @@ let print_type_kind kind =
           [f] -> str ^ "var" ^ (string_of_int n) ^ ") -> (exit(*{}*)0)"
         | (_ :: rest) -> loop rest (str ^ "var" ^ (string_of_int n) ^ ", ") (n + 1) in
       let str = loop lst s 0 in
-      Format.fprintf ppf "%s@." str
+      Format.fprintf ppf "%s@?" str
     | Record (lst) ->
       let s = "{" in
       (* Format.fprintf ppf "{@."; *)
@@ -312,7 +312,7 @@ let print_type_kind kind =
 	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
       in
       let str = loop lst s in
-      Format.fprintf ppf "%s@." str;
+      Format.fprintf ppf "%s@?" str;
     | Variant (lst) ->
       List.iter (fun (name, ts) ->
 	  let length = List.length ts in
@@ -331,7 +331,7 @@ let print_type_kind kind =
 	      | (t :: r) ->
 		loop r (n + 1) (str ^ "var" ^ (string_of_int n) ^ ", ") in
 	    let str = loop ts 0 s in
-	    Format.fprintf ppf "%s@." str)
+	    Format.fprintf ppf "%s@?" str)
 	lst
   end
 
@@ -374,7 +374,7 @@ let print_refine_record kinds =
 	| ((name, _) :: r) -> loop2 r (str ^ name ^ " = " ^ "(exit(*{}*)0)" ^ "; ")
       in
       let str = loop2 lst s in
-      Format.fprintf ppf "%s@." str;
+      Format.fprintf ppf "%s@?" str;
     | _ -> Format.fprintf ppf "Error: Cannot Refine@."
   in
   List.iter loop kinds
@@ -397,7 +397,7 @@ let rec refine_goal n expr structure =
 	  loop r (str ^ "(exit(*{}*)0), ") in
       let str = loop lst "(" in
       (* Format.fprintf ppf "tuple@." *)
-      Format.fprintf ppf "%s@." str
+      Format.fprintf ppf "%s@?" str
     | Tlink ({desc = Tlink (e)}) -> (* tuple の入れ子 *)
       refine_goal n e structure
     | Tlink (e) -> refine_goal n e structure
@@ -459,7 +459,7 @@ let go (structure, coercion) =
     | Match -> let (typ, env) = get_type (structure, coercion) n in
       let var = get_matched_variable n in
       print_match_expr n "a" var env structure
-    | If -> Format.fprintf ppf "if (exit(*{}*)0) then (exit(*{}*)0) else (exit(*{}*)0)@."
+    | If -> Format.fprintf ppf "if (exit(*{}*)0) then (exit(*{}*)0) else (exit(*{}*)0)@?"
     | ShowGoal -> let (typ, env) = get_type (structure, coercion) n in
       show_goal typ env
   end;
