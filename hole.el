@@ -210,36 +210,38 @@ modified."
     (progn
       ;; delete this hole and insert the expression that user input
       (agda2-reset) ;; delete this hole
-      (insert expression) ;; insert expression ;; TODO: fix the regular expression to get `var`
-      ;; create buffer for return value from expander
-      (generate-new-buffer "expander-buffer")
-      ;; save
-      (save-buffer)
-      (let ((refine-buffer (buffer-name))) ;; current buffer name
-      	;;	(split-window-below)
-      	;;	(set-window-buffer nil "expander-buffer")
-      	(call-process path nil "expander-buffer" nil "-w" "-A" filename num "RefineArg" expression)
-	(let ((answer (with-current-buffer "expander-buffer"
-			(buffer-string))
+      (insert expression) ;; insert expression
+      (let ((p (point)))
+	;; create buffer for return value from expander
+	(generate-new-buffer "expander-buffer")
+	;; save
+	(save-buffer)
+	(let ((refine-buffer (buffer-name))) ;; current buffer name
+	  ;;	(split-window-below)
+	  ;;	(set-window-buffer nil "expander-buffer")
+	  (call-process path nil "expander-buffer" nil "-w" "-A" filename num "RefineArg" expression)
+	  (let ((answer (with-current-buffer "expander-buffer"
+			  (buffer-string))
       			))
-	  (if (or (string-match "Error*" answer)  (string-match "Warning*" answer))
-	      ;; delete `word` and insert hole
+	    (if (or (string-match "Error*" answer)  (string-match "Warning*" answer))
+		;; delete `word` and insert hole
+		(progn
+		  (delete-expression expression)
+		  (put-hole)
+		  (message "Cannot Refine:\n%s" answer))
 	      (progn
-		(delete-expression expression)
-		(put-hole)
-		(message "Cannot Refine:\n%s" answer))
-	    (progn
-	      (ocp-indent-buffer)
-	      (save-buffer)
-	      (agda2-go) ;; reset all the hole numbers
-	      ))
-	  (kill-buffer "expander-buffer")
-      	    ))
+		(ocp-indent-buffer)
+		(save-buffer)
+		(agda2-go) ;; reset all the hole numbers
+		(goto-char p)
+		))
+	    (kill-buffer "expander-buffer")
+      	    )))
       )))
   
  (defun refine-goal ()
   (interactive)
-  (let ((filename (buffer-file-name))
+  (let* ((filename (buffer-file-name))
 	(overlay-and-number (agda2-goal-at (point))) ;; "Return (goal overlay, goal number) at POS, or nil."
 	(num (car (cdr overlay-and-number))))
     (progn
@@ -308,7 +310,7 @@ modified."
    
 (defun refine-if-statement ()
   (interactive)
-  (let ((filename (buffer-file-name))
+  (let* ((filename (buffer-file-name))
 	 (overlay-and-position (agda2-goal-at (point)))
 	 (num (car (cdr overlay-and-position))))
     (progn
@@ -332,7 +334,7 @@ modified."
 
 (defun show-goal ()
   (interactive)
-   (let ((filename (buffer-file-name))
+   (let* ((filename (buffer-file-name))
 	 (overlay-and-position (agda2-goal-at (point)))
 	 (num (car (cdr overlay-and-position))))
      (progn
