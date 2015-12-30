@@ -183,9 +183,11 @@ modified."
 
 (defun put-hole ()
   (interactive)
-  (insert hole)
-  (agda2-go)
-  )
+  (let ((start (point)))
+    (insert hole)
+    (agda2-go)
+    (goto-char (+ start 8))
+  ))
 
 (defun delete-expression (expression)
        (goto-char (point))
@@ -195,15 +197,16 @@ modified."
 	       (delete-region start end)))))
 	   
 
-(defun refine-goal-with-argument () ;; need to compile to type check
+(defun refine-goal-with-argument ()
   (interactive)
-  (let* ((overlay_and_position (agda2-goal-at (point)))
-	 (range (agda2-range-of-goal (car (cdr overlay_and_position))))
+  (let* ((overlay-and-number (agda2-goal-at (point))) ;; "Return (goal overlay, goal number) at POS, or nil."
+	 (num (car (cdr overlay-and-number)))
+	 (range (agda2-range-of-goal num))
 	 (start (car range)) ;; <start>(exit(*{}*)n)<end>
 	 (end (car (last range)))
 	 (expression (get-expression start end))
     	 (filename (buffer-file-name))
-	 (num (get-hole-number)))
+	 )
     (progn
       ;; delete this hole and insert the expression that user input
       (agda2-reset) ;; delete this hole
@@ -215,7 +218,7 @@ modified."
       (let ((refine-buffer (buffer-name))) ;; current buffer name
       	;;	(split-window-below)
       	;;	(set-window-buffer nil "expander-buffer")
-      	(call-process path nil "expander-buffer" nil filename num "RefineArg" expression)
+      	(call-process path nil "expander-buffer" nil "-w" "-A" filename num "RefineArg" expression)
 	(let ((answer (with-current-buffer "expander-buffer"
 			(buffer-string))
       			))
@@ -237,7 +240,8 @@ modified."
  (defun refine-goal ()
   (interactive)
   (let ((filename (buffer-file-name))
-	(num (get-hole-number)))
+	(overlay-and-number (agda2-goal-at (point))) ;; "Return (goal overlay, goal number) at POS, or nil."
+	(num (car (cdr overlay-and-number))))
     (progn
       ;; create buffer for return value from expander
       (generate-new-buffer "expander-buffer")
@@ -246,7 +250,7 @@ modified."
       (let ((refine-buffer (buffer-name))) ;; current buffer name
 ;;	(split-window-below)
 ;;	(set-window-buffer nil "expander-buffer")
-	(call-process path nil "expander-buffer" nil filename num "Refine")
+	(call-process path nil "expander-buffer" nil "-w" "-A" filename num "Refine")
 	(progn
 	  (let ((answer (with-current-buffer "expander-buffer"
 			  (buffer-string))
@@ -267,41 +271,50 @@ modified."
 
 (defun match-variable ()
   (interactive)
-   (let* ((overlay_and_position (agda2-goal-at (point)))
-	 (range (agda2-range-of-goal (car (cdr overlay_and_position))))
+  (let* ((overlay-and-position (agda2-goal-at (point)))
+	 (num (car (cdr overlay-and-position)))
+	 (range (agda2-range-of-goal num))
 	 (start (car range))
 	 (end (car (last range)))
 	 (expression (get-expression start end))
-    	 (filename (buffer-file-name))
-	 (num (get-hole-number)))
-     (progn
+    	 (filename (buffer-file-name)))
+    (progn
        (generate-new-buffer "expander-buffer")
-       (save-buffer)
-       (call-process path nil "expander-buffer" nil filename num "Match" expression)
-       (progn
-	 (let ((answer (with-current-buffer "expander-buffer"
-			 (buffer-string))
-		       ))
-	   (if (or (string-match "Error:*" answer) (string-match "Warning*" answer))
-	       (message "%s" answer)
-	     (progn
-	       (agda2-reset)
-	       (insert answer)
-	       (ocp-indent-buffer)
-	       (save-buffer)
-	       (agda2-go)
-	       ))
-	   (kill-buffer "expander-buffer")
-	   )))))
-
+       ;; insert let a = g 3 in {a }0
+       (agda2-reset)
+       (let ((tempstart (point))
+	     (temp-str (concat "let a = " (concat expression " in (exit(*{a}*)0)"))))
+	 (insert temp-str)
+	 (agda2-go) ;; set the hole number
+	 (let ((tempend (point)))
+	   (save-buffer)
+	   ;; expander.ml always gets type of variable "a" instead of expression
+	   (call-process path nil "expander-buffer" nil "-w" "-A" filename num "Match" expression)
+	   (progn
+	     (let ((answer (with-current-buffer "expander-buffer"
+			     (buffer-string))
+			   ))
+	       (if (or (string-match "Error:*" answer) (string-match "Warning*" answer))
+		   (message "%s" answer)
+		 (progn
+		   (delete-region tempstart tempend)
+		   (insert answer)
+		   (ocp-indent-buffer)
+		   (save-buffer)
+		   (agda2-go)
+		   ))
+	       (kill-buffer "expander-buffer")
+	       )))))))
+   
 (defun refine-if-statement ()
   (interactive)
   (let ((filename (buffer-file-name))
-	 (num (get-hole-number)))
+	 (overlay-and-position (agda2-goal-at (point)))
+	 (num (car (cdr overlay-and-position))))
     (progn
       (generate-new-buffer "expander-buffer")
       (save-buffer)
-      (call-process path nil "expander-buffer" nil filename num "If")
+      (call-process path nil "expander-buffer" nil "-w" "-A" filename num "If")
       (progn
 	(let ((answer (with-current-buffer "expander-buffer"
 			(buffer-string))))
@@ -320,11 +333,12 @@ modified."
 (defun show-goal ()
   (interactive)
    (let ((filename (buffer-file-name))
-	 (num (get-hole-number)))
+	 (overlay-and-position (agda2-goal-at (point)))
+	 (num (car (cdr overlay-and-position))))
      (progn
       (generate-new-buffer "expander-buffer")
       (save-buffer)
-      (call-process path nil "expander-buffer" nil filename num "ShowGoal")
+      (call-process path nil "expander-buffer" nil "-w" "-A" filename num "ShowGoal")
       (progn
 	(let ((answer (with-current-buffer "expander-buffer"
 			(buffer-string))))

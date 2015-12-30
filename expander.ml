@@ -340,9 +340,10 @@ let print_type_kinds var kinds =
   Format.fprintf ppf "match %s with@." var;
   List.iter print_type_kind kinds
 
-(* match_variable: int -> string -> -> env_t -> Typedtree.structure -> unit *)
+(* match_variable: int -> string -> string -> env_t -> Typedtree.structure -> unit *)
 (* 変数 x の型を env から取ってくる -> その型を structure から探して出力 *)
-let print_match_expr n x env structure =
+(* x は常に "a", print するのは match exp with *)
+let print_match_expr n x exp env structure =
   let type_of_x = find_type_of_var x env in (* ユーザ定義の型かどうか調べる, List も "int list" とかが返ってくる *)
   let rec loop typ =
     begin match typ.desc with
@@ -350,13 +351,13 @@ let print_match_expr n x env structure =
       (* e.g. 'a list: Tconstr (list, _, _), 'a option: Tconstr (option, _, _) *)
       | Tconstr (path, _, _) -> (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path;*)
 	let constructors = find_constructors path structure.str_items in (* constructors: type_kind list *)
-	print_type_kinds x constructors
+	print_type_kinds exp constructors
       (* e.g. type t = {a = int, b = int} は Tlink (t) *)
       | Tlink (t) ->
         (* Format.fprintf ppf "Tlink: %a@." Printtyp.type_expr typ; *)
       loop t
       (* tuple: Ttuple [Tconstr int; Tconstr int; ...] *)
-      | Ttuple (el) -> let kinds = make_kinds_of_tuple el in print_type_kinds x kinds
+      | Ttuple (el) -> let kinds = make_kinds_of_tuple el in print_type_kinds exp kinds
       | _ -> Format.fprintf ppf "Error: Not Tconstr or Tlink@."; match_types_expr type_of_x
     end
   in loop type_of_x
@@ -418,11 +419,11 @@ let show_goal typ env =
 (* get_matched_variable: int -> string *)
 (* n 番目の hole でユーザがどの変数で match したいと入力してるかを取得 *)
 let get_matched_variable n =
-  (* Format.fprintf ppf "%s@." Sys.argv.(4); *)
-  Sys.argv.(4)
+  (* Format.fprintf ppf "%s@." Sys.argv.(6); *)
+  Sys.argv.(6)
 
 (* get_mode: unit -> select_mode *)
-let get_mode () = match Sys.argv.(3) with
+let get_mode () = match Sys.argv.(5) with
     "Refine" -> Refine
   | "RefineArg" -> RefineArg
   | "Match" -> Match
@@ -448,7 +449,7 @@ let get_type (structure, coercion) n =
                  Typedtree.structure * Typedtree.module_coercion *)
 (* ./expander filename n mode Some(var) *)
 let go (structure, coercion) =
-  let n = int_of_string Sys.argv.(2) in
+  let n = int_of_string Sys.argv.(4) in
   let mode = get_mode () in
   begin
     match mode with
@@ -457,7 +458,7 @@ let go (structure, coercion) =
     | RefineArg -> () (* only pass the source program to the compiler *)
     | Match -> let (typ, env) = get_type (structure, coercion) n in
       let var = get_matched_variable n in
-      print_match_expr n var env structure
+      print_match_expr n "a" var env structure
     | If -> Format.fprintf ppf "if (exit(*{}*)0) then (exit(*{}*)0) else (exit(*{}*)0)@."
     | ShowGoal -> let (typ, env) = get_type (structure, coercion) n in
       show_goal typ env
