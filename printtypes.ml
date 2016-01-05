@@ -4,10 +4,22 @@ open Asttypes
 open Typedtree
 open Types
 open Path
+open Longident
 
 (* output channel *)
 let ppf = Format.formatter_of_out_channel stdout
 
+(* get_path_name: Path.t -> string *)
+let get_path_name path = match path with
+    Pident (ident) -> ident.name
+  | _ -> failwith "Error: path is not Pident@."
+
+(*get_longident_name: Longident.t -> string *)
+let rec get_longident_name id = match id with
+    Lident (s) -> s
+  | Ldot (_, s) -> s
+  | Lapply (t1, t2) -> get_longident_name t1 ^ " " ^ get_longident_name t2
+                         
 (***** Types *****)
 (* match_types_expr: Types.type_expr -> unit *)
 let rec match_types_expr expr = match expr.desc with
@@ -65,3 +77,44 @@ let print_structure_item item = match item.str_desc with
   | Tstr_class_type (_) -> Format.fprintf ppf "Tstr_class_type@."
   | Tstr_include (_) -> Format.fprintf ppf "Tstr_include@."
   | Tstr_attribute (_) -> Format.fprintf ppf "Tstr_attribute@."
+
+(* print_core_type_desc: Typedtree.core_type -> unit *)
+let rec print_core_type_desc ct = match ct.ctyp_desc with
+   Ttyp_any -> Format.fprintf ppf "core_type: Ttyp_any@."
+  | Ttyp_var (s) -> Format.fprintf ppf "core_type: Ttyp_var, %s@." s
+  | Ttyp_arrow (_, c1, c2) -> begin
+      Format.fprintf ppf "core_type: Ttyp_arrow, c1: @?";
+      print_core_type_desc c1;
+      Format.fprintf ppf "c2: @?";
+      print_core_type_desc c2
+    end
+  | Ttyp_tuple (ctl) -> begin
+      Format.fprintf ppf "core_type: Ttyp_tuple, elements: @?";
+      List.iter print_core_type_desc ctl
+    end
+  | Ttyp_constr (path, _, ctl) -> begin
+      Format.fprintf ppf "core_type: Ttyp_constr, path: %s@?"
+        (get_path_name path);
+      List.iter print_core_type_desc ctl
+    end
+  | Ttyp_object (lst, _) -> begin
+      Format.fprintf ppf "core_type: Ttyp_object@?";
+      let f l = match l with
+          (s, _, ct) -> Format.fprintf ppf "%s@?" s; print_core_type_desc ct
+      in
+      List.iter f lst
+    end
+  | Ttyp_class (path, id, ctl) -> begin
+      Format.fprintf ppf "core_type: Ttyp_class, path: %s@?"
+        (get_path_name path);
+      List.iter print_core_type_desc ctl
+    end
+  | Ttyp_alias (ct, s) -> Format.fprintf ppf "core_type: Ttyp_alias %s@?" s;
+    print_core_type_desc ct
+  | Ttyp_variant (_, _, _) -> Format.fprintf ppf "core_type: Ttyp_variant@."
+  | Ttyp_poly (sl, ct) -> begin
+      Format.fprintf ppf "core_type: Ttyp_poly@?";
+      List.iter (fun s -> Format.fprintf ppf "%s @?" s) sl;
+      print_core_type_desc ct
+    end
+  | Ttyp_package (_) -> Format.fprintf ppf "core_type: Ttyp_package@."
