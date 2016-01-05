@@ -15,6 +15,8 @@
 			  ("\C-ci" . 'refine-if-statement)
 			  ("\C-cs" . 'show-goal)
 			  ("\C-ch" . 'put-hole)
+			  ("\C-cn" . 'agda2-next-goal)
+			  ("\C-cb" . 'agda2-previous-goal)
 			  )
 	))
 
@@ -107,6 +109,23 @@ modified."
           (> end (- (overlay-end ol) 2)))
       (unless inhibit-read-only
         (signal 'text-read-only nil))))))
+
+(defmacro agda2-let (varbind funcbind &rest body)
+  "Expands to (let* VARBIND (cl-labels FUNCBIND BODY...)).
+Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
+  `(let* ,varbind (cl-labels ,funcbind ,@body)))
+(put 'agda2-let 'lisp-indent-function 2)
+
+(defun agda2-next-goal ()     "Go to the next goal, if any."     (interactive)
+  (agda2-mv-goal 'next-single-property-change     'agda2-delim1 1 (point-min)))
+(defun agda2-previous-goal () "Go to the previous goal, if any." (interactive)
+  (agda2-mv-goal 'previous-single-property-change 'agda2-delim2 0 (point-max)))
+(defun agda2-mv-goal (change delim adjust wrapped)
+  (agda2-let ()
+      ((go (p) (while (and (setq p (funcall change p 'category))
+                           (not (eq (get-text-property p 'category) delim))))
+           (if p (goto-char (+ adjust p)))))
+    (or (go (point)) (go wrapped) (message "No goals in the buffer"))))
 
 ;; for gensym
 (defvar hole-number 0)
