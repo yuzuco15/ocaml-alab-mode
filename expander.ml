@@ -230,7 +230,8 @@ let zip_constructors (lst: Typedtree.constructor_declaration list) = List.map zi
 (* type_core_to_type_expr: Typedtree.core_type option -> Typedtree.structure_item list -> type_kind list *)
 let rec type_core_to_type_expr op_core_type structure_items = match op_core_type with
     None -> Format.fprintf ppf "Error@."; []
-  | Some (ct) -> make_type_kinds ct.ctyp_type structure_items
+  | Some (ct) -> (* Format.fprintf ppf "type_expr in op_core_type: %a@." Printtyp.type_expr ct.ctyp_type; *)
+    make_type_kinds ct.ctyp_type structure_items
 
 (* find_constructor: string -> Typedtree.type_declaration list -> Typedtree.structure_item list -> type_kind list *)
 and find_constructor name lst structure_items =
@@ -246,7 +247,8 @@ and find_constructor name lst structure_items =
 	    | Ttype_variant (constructor_declaration_list) ->
               Variant (zip_constructors constructor_declaration_list) :: find_constructor name rest structure_items
             (* Ttype_abstract のときは typ_manifest の中を見にいく *)
-            | Ttype_abstract -> (type_core_to_type_expr manifest structure_items) @ (find_constructor name rest structure_items)
+            | Ttype_abstract ->
+              (type_core_to_type_expr manifest structure_items) @ (find_constructor name rest structure_items)
             | Ttype_open -> find_constructor name rest structure_items
           end
         else find_constructor name rest structure_items
@@ -254,20 +256,20 @@ and find_constructor name lst structure_items =
 	[]
     end
 
-(* find_constructors: Path.t -> Typedtree.structure_item list -> type_kind list *)
+(* find_constructors: Path.t -> Typedtree.structure_item list -> structure_items list -> type_kind list *)
 (* path (ユーザ定義の variant の名前) の型情報を structure から探す *)
-and find_constructors path structure_items =
+and find_constructors path structure_items all_str_items =
   let name = get_path_name path in
   if name = "list" then [Variant ([("[]", []); ("(var0 :: var1)", [])])]
   else if name = "option" then [Variant([("None", []); ("Some", [Core (Core_type (Ttyp_any))])])]
   else
       begin match structure_items with
-          [] -> []
+          [] -> (* Format.fprintf ppf "structure_items is mt@."; *) []
         | item :: rest ->
           begin match item.str_desc with
-              Tstr_type (type_declarations) -> (* Format.fprintf ppf "Tstr_type@.";*)
-              (find_constructor name type_declarations structure_items) @ (find_constructors path rest)
-            | _ -> find_constructors path rest
+              Tstr_type (type_declarations) -> (* Format.fprintf ppf "Tstr_type@."; *)
+              (find_constructor name type_declarations all_str_items) @ (find_constructors path rest all_str_items)
+            | _ -> find_constructors path rest all_str_items
           end
       end
 
@@ -289,7 +291,7 @@ and make_type_kinds typ structure_items =
   (* e.g. type tree = Empty | Node of tree * int * tree は Tconstr (tree, _, _) *)
   (* e.g. 'a list: Tconstr (list, _, _), 'a option: Tconstr (option, _, _) *)
   | Tconstr (path, _, _) ->  (* Format.fprintf ppf "Tconstr path: %a@." Printtyp.path path; *)
-    find_constructors path structure_items (* constructors: type_kind list *)
+    find_constructors path structure_items structure_items (* constructors: type_kind list *)
   (* print_type_kinds exp constructors *)
   (* e.g. type t = {a = int, b = int} は Tlink (t) *)
   | Tlink (t) ->
@@ -385,7 +387,7 @@ let print_refine_record kinds =
 
 (* refine_record: Path.t -> type_expr list structure *)
 let refine_record path el structure =
-  let fields = find_constructors path structure.str_items in
+  let fields = find_constructors path structure.str_items structure.str_items in
   print_refine_record fields
 
 (* refine_goal: int -> type_expr -> Typedtree.structure -> unit *)
