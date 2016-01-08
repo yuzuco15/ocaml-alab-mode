@@ -3,25 +3,24 @@
 
 (defvar hole "(exit(*{}*)0)")
 
-(defun set-alab-mode-key ()
-  (interactive)
-  (mapc 'set-global-key '(
-			  ("\C-cg" . 'agda2-go)
-			  ("\C-cr" . 'refine-goal)
-			  ("\C-c," . 'refine-goal-with-argument)
-			  ("\C-cm" . 'match-variable)
-			  ("\C-cc" . 'agda2-forget-this-goal)
-			  ("\C-cf" . 'agda2-forget-all-goals)
-			  ("\C-ci" . 'refine-if-statement)
-			  ("\C-cs" . 'show-goal)
-			  ("\C-ch" . 'put-hole)
-			  ("\C-cn" . 'agda2-next-goal)
-			  ("\C-cb" . 'agda2-previous-goal)
-			  )
-	))
-
-(defun set-global-key (key)
-  (global-set-key (car key) (car (last key))))
+;; minor mode
+;; `M-x hole-mode` to use this mode.
+(define-minor-mode hole-mode nil nil 
+:lighter "+Hole" 
+:keymap '( 
+("\C-cg" . agda2-go) 
+("\C-cr" . refine-goal) 
+("\C-c," . refine-goal-with-argument) 
+("\C-cm" . match-variable) 
+("\C-cc" . agda2-forget-this-goal) 
+("\C-cf" . agda2-forget-all-goals) 
+("\C-ci" . refine-if-statement) 
+("\C-cs" . show-goal) 
+("\C-ch" . put-hole)
+("\C-cn" . agda2-next-goal)
+("\C-cb" . agda2-previous-goal)
+) 
+:group 'tuareg)
 
 ;; goal position and number
 (defun agda2-goal-at(pos)
@@ -113,8 +112,10 @@ modified."
 (defmacro agda2-let (varbind funcbind &rest body)
   "Expands to (let* VARBIND (cl-labels FUNCBIND BODY...)).
 Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
-  `(let* ,varbind (cl-labels ,funcbind ,@body)))
-(put 'agda2-let 'lisp-indent-function 2)
+  ;;`(let* ,varbind (cl-labels ,funcbind ,@body))
+  `(let* ,varbind (,(if (fboundp 'cl-labels) 'cl-labels 'labels) ,funcbind ,@body))
+  )
+;;(put 'agda2-let 'lisp-indent-function 2)
 
 (defun agda2-next-goal ()     "Go to the next goal, if any."     (interactive)
   (agda2-mv-goal 'next-single-property-change     'agda2-delim1 1 (point-min)))
@@ -130,7 +131,7 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 ;; for gensym
 (defvar hole-number 0)
 
-(defun gensym ()
+(defun gensym-hole-number ()
   (setq hole-number (+ hole-number 1))
   )
 
@@ -180,7 +181,7 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
     (goto-char (point-min))
     (setq hole-number 0)
     (while (agda2-search-goal)
-      (gensym)
+      (gensym-hole-number)
       ;;(print hole_number)
 	   ; no body
       )))
