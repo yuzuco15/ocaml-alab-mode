@@ -1,26 +1,42 @@
 ;; set the path to expander*
 (defvar path "/Users/YukiIshii/lab/expander/expander")
 
+;; hole for expression
+;; let f: 'a -> 'a = (exit 0)
 (defvar hole "(exit(*{}*)0)")
+;; prefix and suffix of hole for regular expression
+;; (exit(\*{<p><q>}\*)n)<r>
+(defvar hole-p "(exit(\\*{")
+(defvar hole-q "}\\*)")
+(defvar hole-r "[0-9]+)")
+
+;; hole for pattern
+;; let f: (_) = fun x -> x;;
+(defvar pattern-hole "(_(*{}*)0)")
+;; prefix and suffix of pattern-hole for regular expression
+;; (_(\*{<p><q>}\*)n)<r>
+(defvar pattern-hole-p "(_(\\*{")
+(defvar pattern-hole-q "}\\*)")
+(defvar pattern-hole-r "[0-9]+)")
 
 ;; minor mode
 ;; `M-x hole-mode` to use this mode.
 (define-minor-mode hole-mode nil nil 
-:lighter "+Hole" 
-:keymap '( 
-("\C-cg" . agda2-go) 
-("\C-cr" . refine-goal) 
-("\C-c," . refine-goal-with-argument) 
-("\C-cm" . match-variable) 
-("\C-cc" . agda2-forget-this-goal) 
-("\C-cf" . agda2-forget-all-goals) 
-("\C-ci" . refine-if-statement) 
-("\C-cs" . show-goal) 
-("\C-ch" . put-hole)
-("\C-cn" . agda2-next-goal)
-("\C-cb" . agda2-previous-goal)
-) 
-:group 'tuareg)
+  :lighter "+Hole" 
+  :keymap '( 
+	    ("\C-cg" . agda2-go) 
+	    ("\C-cr" . refine-goal) 
+	    ("\C-c," . refine-goal-with-argument) 
+	    ("\C-cm" . match-variable) 
+	    ("\C-cc" . agda2-forget-this-goal) 
+	    ("\C-cf" . agda2-forget-all-goals-pattern) 
+	    ("\C-ci" . refine-if-statement) 
+	    ("\C-cs" . show-goal) 
+	    ("\C-ch" . put-hole)
+	    ("\C-cn" . agda2-next-goal)
+	    ("\C-cb" . agda2-previous-goal)
+	    ) 
+  :group 'tuareg)
 
 ;; goal position and number
 (defun agda2-goal-at(pos)
@@ -86,6 +102,20 @@ Modification hooks are also disabled."
       (overlay-put o 'after-string       (propertize (format "%s" n) 'face 'highlight))
       o )))
 
+(defun agda2-make-goal-pattern (p q r)
+  "Make a goal at (_(\*{<p><q>}\*)n)<r>."
+  (annotation-preserve-mod-p-and-undo
+   (let ((n (buffer-substring (+ q 3) (- r 1)))
+	 (o (make-overlay (- p 5) r nil t nil)))
+      ;;(print n)
+      (add-text-properties (- p 5) p '(category agda2-delim1))
+      (add-text-properties q r '(category agda2-delim2))
+      (overlay-put o 'agda2-gn           n)
+      (overlay-put o 'modification-hooks '(agda2-protect-goal-markers))
+      (overlay-put o 'face               'highlight)
+      (overlay-put o 'after-string       (propertize (format "%s" n) 'face 'highlight))
+      o )))
+
 (defun agda2-protect-goal-markers (ol action beg end &optional length)
   "Ensures that the goal markers cannot be tampered with.
 Except if `inhibit-read-only' is non-nil or /all/ of the goal is
@@ -118,7 +148,7 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 ;;(put 'agda2-let 'lisp-indent-function 2)
 
 (defun agda2-next-goal ()     "Go to the next goal, if any."     (interactive)
-  (agda2-mv-goal 'next-single-property-change     'agda2-delim1 1 (point-min)))
+  (agda2-mv-goal 'next-single-property-change     'agda2-delim1 8 (point-min)))
 (defun agda2-previous-goal () "Go to the previous goal, if any." (interactive)
   (agda2-mv-goal 'previous-single-property-change 'agda2-delim2 0 (point-max)))
 (defun agda2-mv-goal (change delim adjust wrapped)
@@ -148,16 +178,32 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 	    (let ((q (- (point) 3))) ;; <q>}\\*)
 	      ;; remove hole number if the hole has
 	      (goto-char q)
-	      (cond ;; ((re-search-forward "}\\*)[ \t\n\r\f\v]" nil t 1)
-		    ;;  (let ((start (- (point) 1))) ;; }\\*)<start>
-		    ;;    ;; no need to delete hole number
-		    ;;    (progn
-		    ;; 	 (insert-hole-number start)
-		    ;; 	 (goto-char q)
-		    ;; 	 (if (re-search-forward "}\\*)[0-9]+)" nil t 1)
-		    ;; 	     (let ((r (point))) ;; }\\*)n)<r>
-		    ;; 	       (agda2-make-goal p q r)))
-		    ;;    )))
+	      (cond 
+		    ((re-search-forward "}\\*)[0-9]+" nil t 1)
+		     ;; need to delete hole number
+		     (progn
+		       (let ((end (point))) ;; }\\*)[0-9]+<end>)
+			 (re-search-backward ")[0-9]+" nil t 1)
+			 (let ((start (+ 1 (point)))) ;; }\\*)<start>[0-9]+<end>)
+			   (delete-region start end) ;; delete hole number
+			   (insert-hole-number start)
+			   (goto-char start)
+			   (if (re-search-forward "[0-9]+)") ;; [0-9]+)<r>
+			       (let ((r (point))) ;; (exit(\\*{<p><q>}\\*)n)<r>
+				 (agda2-make-goal p q r)
+				 ))))
+		       )))
+	      ))))))
+
+(defun agda2-search-goal-pattern ()
+  (if (re-search-forward pattern-hole-p nil t 1)
+    (let ((p (point))) ;; (_(\\*{<p>...
+      (if (re-search-forward pattern-hole-q nil t 1)
+	  (progn
+	    (let ((q (- (point) 3))) ;; <q>}\\*)
+	      ;; remove hole number if the hole has
+	      (goto-char q)
+	      (cond 
 		    ((re-search-forward "}\\*)[0-9]+" nil t 1)
 		     ;; need to delete hole number
 		     (progn
@@ -177,20 +223,14 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 (defun agda2-go ()
   (interactive)
   (progn
-    (agda2-forget-all-goals)
+    (agda2-forget-all-goals-pattern)
     (goto-char (point-min))
     (setq hole-number 0)
-    (while (agda2-search-goal)
+    (while (agda2-search-goal-pattern)
       (gensym-hole-number)
       ;;(print hole_number)
 	   ; no body
       )))
-
-;; TODO:
-;; 9. refine or match goal only when (position) is in the goal
-;; 11. compile to check errors before agda2-go (load) before refine and match goal
-;; 12. begin ... end
-;; 14. support show-goal (and its env): split-window, generate-new-buffer etc.*
 
 (defun get-expression (start end) ;; <start>(exit(*{}*)n)<end>
   (goto-char end)
@@ -433,13 +473,35 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 	      (let* ((r (point))
 		     (lays (overlays-in p r)))
 		(delete-lays lays) ;; delete hole number and highlight
-		;; remove text properties -> exit(*{ }*)n appears
+		;; remove text properties -> (exit(*{}*)n) appears
 		(remove-text-properties (- p 8) p '(category agda2-delim1))
 		(remove-text-properties (- q 3) r '(category agda2-delim2))
 		(goto-char (point))
 	  	)
 	    )
 	  )))))
+
+;; clear all the pattern-holes in *.ml
+(defun agda2-search-hole-pattern ()
+  (message "start"
+  (if (re-search-forward "(_(*{" nil t 1)
+      (progn
+	(message "p")
+	(let ((p (point)))
+	  (if (re-search-forward "}\\*)" nil t 1)
+	      (let ((q (point)))
+		(if (re-search-forward "[0-9]+)" nil t 1)
+		    (let* ((r (point))
+			   (lays (overlays-in p r)))
+		      (message "p, q, r")
+		      (delete-lays lays) ;; delete hole number and highlight
+		      ;; remove text properties -> (_(*{}*)n) appears
+		      (remove-text-properties (- p 5) p '(category agda2-delim1))
+		      (remove-text-properties (- q 3) r '(category agda2-delim2))
+		      (goto-char (point))
+		      )
+		  )
+		))))))
 
 (defun agda2-forget-this-goal ()
   (interactive)
@@ -452,5 +514,13 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
   (progn
     (goto-char (point-min))
     (while (agda2-search-hole)
+      ;; no body
+      )))
+
+(defun agda2-forget-all-goals-pattern ()
+  (interactive)
+  (progn
+    (goto-char (point-min))
+    (while (agda2-search-hole-pattern)
       ;; no body
       )))
