@@ -301,7 +301,7 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 (defun agda2-go-pattern ()
   (interactive)
   (save-excursion
-    ;;(agda2-forget-all-goals-pattern)
+    (agda2-forget-all-goals-pattern)
     (goto-char (point-min))
     (setq hole-number 0)
     (while (agda2-search-goal-pattern)
@@ -576,26 +576,26 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
 
 ;; clear all the pattern-holes in *.ml
 (defun agda2-search-hole-pattern ()
-  (message "start" ;; hole: (_(*{}0*))
+  ;; hole: (_(*{}0*))
   (if (re-search-forward "(_(\\*{" nil t 1)
-      (progn
-	(message "found p")
-	(let ((p (point))) ;; (_(\\*{<p>
-	  (if (re-search-forward "}[0-9]+\\*))" nil t 1)
-	      (let ((r (point))) ;; }[0-9]+\\*))<r>
-		(message "r")
-		(if (re-search-backward "}[0-9]+\\*))" nil t 1)
-		    (let* ((q (point)) ;; <q>}[0-9]+\\*))
-			   (lays (overlays-in p r)))
-		      (message "p, q, r") ;; (_(\\*{<p>...<q>}[0-9]+\\*))<r>
-		      (delete-lays lays) ;; delete highlight
-		      ;; remove text properties -> (_(*{}n*)) appears
-		      (remove-text-properties (- p 5) p '(category agda2-delim1))
-		      (remove-text-properties q r '(category agda2-delim2))
-		      (goto-char (point))
-		      )
-		  )
-		)))))))
+      ;;(message "found p")
+    (let ((p (point))) ;; (_(\\*{<p>
+      (if (re-search-forward "}[0-9]+\\*))" nil t 1)
+    	   (let ((r (point))) ;; }[0-9]+\\*))<r>
+    	     ;;(message "r")
+    	     (if (re-search-backward "}[0-9]+\\*))" nil t 1)
+    	     	 (let* ((q (point)) ;; <q>}[0-9]+\\*))
+    	     		(lays (overlays-in p r)))
+    	     	   ;;(message "p, q, r") ;; (_(\\*{<p>...<q>}[0-9]+\\*))<r>
+		   (goto-char r)
+    	     	   (delete-lays lays) ;; delete highlight
+    	     	   ;; remove text properties -> (_(*{}n*)) appears
+    	     	   (remove-text-properties (- p 5) p '(category agda2-delim1))
+    	     	   (remove-text-properties q r '(category agda2-delim2))
+    	     	   )
+    	       )
+    	     )))
+	))
 
 (defun agda2-forget-this-goal ()
   (interactive)
@@ -609,15 +609,12 @@ Or possibly (let* VARBIND (labels FUNCBIND BODY...))."
     (goto-char (point-min))
     (while (agda2-search-hole)
       ;; no body
-      (message "found hole")
       )))
 
 (defun agda2-forget-all-goals-pattern ()
   (interactive)
   (progn
-    (message "forget all pattern")
     (goto-char (point-min))
     (while (agda2-search-hole-pattern)
       ;; no body
-      (message "found hole-pattern")
       )))
