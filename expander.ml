@@ -17,7 +17,9 @@ type select_mode = Refine | RefineArg | Match | If | ShowGoal
 
 (* add_pattern : env_t -> Typedtree.pattern -> env_t *)
 (* add all the pattern variables and their types to env *)
-let rec add_pattern env pat = match pat.pat_desc with
+let rec add_pattern env pat =
+  Format.fprintf ppf "add_pattern@.";
+  match pat.pat_desc with
     Tpat_any -> env
   | Tpat_var (_, {txt = st}) -> (st, pat.pat_type) :: env
   | Tpat_alias (p, _, {txt = st}) -> (st, pat.pat_type) :: add_pattern env p
@@ -40,7 +42,10 @@ let add_bindings env bindings =
 (********** obtain types of hole and variables **********)
 
 (* type_of_hole_in_expr : int -> expression -> type_expr * env_t *)
-let rec type_of_hole_in_expr n expr = match expr.exp_desc with
+let rec type_of_hole_in_expr n expr =
+  (print_expression expr;
+   print_expression_desc expr.exp_desc);
+  match expr.exp_desc with
     Texp_ident (_, _, _) -> raise Not_found
   | Texp_constant (_) -> raise Not_found
   | Texp_let (rec_flag, bindings, expr) ->
