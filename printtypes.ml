@@ -136,7 +136,7 @@ and print_value_binding_list vl =
 
 (* print_pattern: pattern -> unit *)
 and print_pattern pat = match pat.pat_desc with
-    Tpat_any -> Format.fprintf ppf "Tpat_any@."
+    Tpat_any -> Format.fprintf ppf "Tpat_any = wild_card@."
   | Tpat_var (i, _) -> Format.fprintf ppf "Tpat_var: %s@." i.name
   | Tpat_alias (pat, i, _) ->
     begin
@@ -245,3 +245,33 @@ let rec print_core_type_desc ct = match ct.ctyp_desc with
       print_core_type_desc ct
     end
   | Ttyp_package (_) -> Format.fprintf ppf "core_type: Ttyp_package@."
+
+(* print_expression_extra: Typedtree.expression_extra -> unit *)
+let rec print_expression_extra extras = match extras.exp_extra with
+    [] -> ()
+  | (ex,_, _) :: rest ->
+    begin
+      match ex with
+      | Texp_constraint (ct) ->
+        Format.fprintf ppf "Texp_constraint@?";
+        print_core_type_desc ct
+      | Texp_coerce (cop, ct) ->
+        Format.fprintf ppf "Texp_coerce@?";
+        print_core_type_desc ct;
+        begin
+          match cop with
+            None -> ()
+          | Some (ct2) -> print_core_type_desc ct2
+        end
+      | Texp_open (_, path, _, _) -> Format.fprintf ppf "Texp_open path: %s@." (get_path_name path)
+      | Texp_poly (cop) ->
+        Format.fprintf ppf "Texp_poly@?";
+        begin
+          match cop with
+            None -> ()
+          | Some (ct) -> print_core_type_desc ct
+        end
+      | Texp_newtype (s) ->
+        Format.fprintf ppf "Texp_newtype string: %s@." s;
+    end
+
