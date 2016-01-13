@@ -275,3 +275,37 @@ let rec print_expression_extra extras = match extras.exp_extra with
         Format.fprintf ppf "Texp_newtype string: %s@." s;
     end
 
+(***** テスト用の pretty printer *****)
+let rec pprint_expr expr =
+  print_expression expr;
+  print_expression_extra expr;
+  print_expression_desc expr.exp_desc
+
+let rec pprint_exprs exprs = match exprs with
+    [] -> Format.fprintf ppf "Finished pprint_exprs@."
+  | expr :: rest ->
+    pprint_expr expr;
+    pprint_exprs rest
+
+let rec pprint_bindings bindings = match bindings with
+    [] -> Format.fprintf ppf "Finished pprint_bindings@."
+  | {vb_expr = expr} :: rest ->
+    pprint_expr expr;
+    pprint_bindings rest
+
+let rec pprint_structure s_items =
+  begin match s_items with
+      [] -> Format.fprintf ppf "Finished pprint_structure@."
+    | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
+      pprint_bindings bindings;
+      pprint_structure rest
+    | {str_desc = _} :: rest -> pprint_structure rest
+  end
+
+let pprint_pattern (structure, coercion) =
+  begin
+    match coercion with
+      Typedtree.Tcoerce_none -> (* main structure *)
+      pprint_structure structure.str_items
+    | _ -> failwith "Expander: module_coercion not supported yet."
+  end

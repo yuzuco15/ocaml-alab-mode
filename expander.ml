@@ -8,7 +8,18 @@ open Printtypes
 let ppf = Format.formatter_of_out_channel stdout
 
 (* select_mode *)
-type select_mode = Refine | RefineArg | Match | If | ShowGoal
+type select_mode = Refine | RefineArg | Match | If | ShowGoal | FunType
+
+(* get_mode: unit -> select_mode *)
+let get_mode () = match Sys.argv.(5) with
+    "Refine" -> Refine
+  | "RefineArg" -> RefineArg
+  | "Match" -> Match
+  | "If" -> If
+  | "ShowGoal" -> ShowGoal
+  | "FunType" -> FunType
+  | _ -> failwith "Error: this mode is not supported."
+     (* Format.fprintf ppf "Error: select_mode cannot be: %s" Sys.argv.(5)*)
 
 (********** add types of variables to env **********)
 
@@ -18,7 +29,6 @@ type select_mode = Refine | RefineArg | Match | If | ShowGoal
 (* add_pattern : env_t -> Typedtree.pattern -> env_t *)
 (* add all the pattern variables and their types to env *)
 let rec add_pattern env pat =
-  Format.fprintf ppf "add_pattern@.";
   match pat.pat_desc with
     Tpat_any -> env
   | Tpat_var (_, {txt = st}) -> (st, pat.pat_type) :: env
@@ -34,7 +44,7 @@ let rec add_pattern env pat =
   | Tpat_or (p1, p2, _) -> add_pattern (add_pattern env p1) p2
   | Tpat_lazy (p) -> add_pattern env p
 
-(* add_bindings : env_t -> value_binding list -> env_t *)
+(* add_bindings : env_t option -> value_binding list -> env_t *)
 let add_bindings env bindings =
   List.fold_left (fun env {vb_pat = pat} -> add_pattern env pat)
                  env bindings
@@ -43,14 +53,16 @@ let add_bindings env bindings =
 
 (* type_of_hole_in_expr : int -> expression -> type_expr * env_t *)
 let rec type_of_hole_in_expr n expr =
+  (*
   (print_expression expr;
    print_expression_desc expr.exp_desc);
+   *)
   match expr.exp_desc with
     Texp_ident (_, _, _) -> raise Not_found
   | Texp_constant (_) -> raise Not_found
   | Texp_let (rec_flag, bindings, expr) ->
       begin try
-        type_of_hole_in_bindings n rec_flag bindings
+        type_of_hole_in_bindings (string_of_int n) rec_flag bindings
       with
         Not_found ->
           let (typ, env) = type_of_hole_in_expr n expr in
@@ -153,25 +165,91 @@ and type_of_hole_in_cases n cases = match cases with
         Not_found -> type_of_hole_in_cases n rest
       end
 
-(* type_of_hole_in_bindings : int -> rec_flag -> value_binding list ->
-                              type_expr * env_t *)
-and type_of_hole_in_bindings n rec_flag bindings = match bindings with
+(* type_of_patterns: string -> pattern list -> type_expr * env_t *)
+and type_of_patterns funname pats =
+  match pats with
     [] -> raise Not_found
-  | {vb_expr = expr} :: rest ->
-      begin try
-        let (typ, env) = type_of_hole_in_expr n expr in
-        if rec_flag = Recursive
-        then (typ, add_bindings env bindings)
-        else (typ, env)
-      with
-        Not_found -> type_of_hole_in_bindings n rec_flag rest
-      end
+  | (p :: rest) ->
+    try
+      type_of_pattern funname p
+    with
+      Not_found -> type_of_patterns funname rest
 
-(* type_of_hole_in_structure : int -> structure_item list ->
-                               type_expr * env_t *)
+(* type_of_patterns: string -> pattern -> type_expr * env_t *)
+(* env: (string * type_expr) *)
+and type_of_pattern funname pat =
+  match pat.pat_desc with
+    Tpat_any -> raise Not_found
+  | Tpat_var (fname, _) -> (* function name *)
+     if fname.name = funname then (pat.pat_type, []) (* return the type of function and empty env_t *)
+     else raise Not_found
+  | Tpat_alias (p, i, _) ->
+    if i.name = funname then (p.pat_type, []) (* pat.pat_type ? *)
+    else type_of_pattern funname p
+  | Tpat_constant (c) -> raise Not_found
+  | Tpat_tuple (pats) -> type_of_patterns funname pats
+  | Tpat_construct (_, description, pats) -> type_of_patterns funname pats (* need to using description? *)
+  | Tpat_variant (_, pop, _) ->
+    begin
+      match pop with
+        None -> raise Not_found
+      | Some (p) -> type_of_pattern funname p
+    end
+  | Tpat_record (l, _) ->
+    begin
+      match l with
+        [] -> raise Not_found
+      | (_, description, p) :: rest -> type_of_pattern funname p (* need to using description? *)
+    end
+  | Tpat_array (pats) -> type_of_patterns funname pats
+  | Tpat_or (p1, p2, _) ->
+    begin
+      try
+        type_of_pattern funname p1
+      with
+        Not_found -> type_of_pattern funname p2
+    end
+  | Tpat_lazy (p) -> type_of_pattern funname p
+
+(* type_of_hole_in_bindings : string -> rec_flag -> value_binding list
+                              -> type_expr * env_t *)
+and type_of_hole_in_bindings str rec_flag bindings =
+  let mode = get_mode () in
+  match mode with
+    FunType ->
+    begin
+      match bindings with
+	[] -> raise Not_found
+      | {vb_pat = pat} :: rest ->
+	 begin try
+             let (typ, env) = type_of_pattern str pat in
+             (typ, env)
+           with
+             Not_found -> type_of_hole_in_bindings str rec_flag rest
+	 end
+    end
+  | _ -> (* other than FunType mode *)
+     begin
+       let n = int_of_string str in
+       match bindings with
+         [] -> raise Not_found
+       | {vb_expr = expr} :: rest ->
+          begin try
+	      (* `env` is optional type *)
+              let (typ, env) = type_of_hole_in_expr n expr in
+              if rec_flag = Recursive
+              then (typ, add_bindings env bindings)
+              else (typ, env)
+            with
+              Not_found -> type_of_hole_in_bindings str rec_flag rest
+          end
+     end
+
+(* type_of_hole_in_structure : string -> structure_item list
+                               -> type_expr * env_t option *)
 let rec type_of_hole_in_structure n s_items =
   begin match s_items with
-      [] -> Format.fprintf ppf "@[Error (Expander): hole %d is not found.@]@." n;
+      [] -> Format.fprintf ppf "@[Error (Expander): hole %s is not found.@]@." n;
       exit 0
     | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
       begin try
@@ -184,10 +262,9 @@ let rec type_of_hole_in_structure n s_items =
 
 (********** main **********)
 
-(* main : Typedtree.structure -> int -> (type_expr * env_t) *)
-(* 本当は unit を返していた *)
+(* main : Typedtree.structure -> string -> (type_expr * env_t option) *)
 (* type_expr is in Types.ml *)
-let main structure n =
+let main structure n  =
   (* n 番の穴の型とそこから見える変数の型を得る *)
   let (typ, env) = type_of_hole_in_structure n structure.str_items in
   (*
@@ -417,11 +494,15 @@ let rec refine_goal n expr structure =
 (* show_goal: type_expr -> env_t -> unit *)
 let show_goal typ env =
   Format.fprintf ppf "@[type of hole:@ %a@]@." (* 穴の型を表示 *)
-    Printtyp.type_expr typ;
+		 Printtyp.type_expr typ;
   List.iter (fun (v, typ) ->                   (* 変数の型を表示 *)
-      Format.fprintf ppf "@[%s : %a@]@."
-        v Printtyp.type_expr typ)
-    env
+	     Format.fprintf ppf "@[%s : %a@]@."
+			    v Printtyp.type_expr typ)
+	    env
+
+(* show_fun_type: type_expr -> unit *)
+let show_fun_type typ =
+  Format.fprintf ppf "%a@?" Printtyp.type_expr typ
 
 (* get_matched_variable: int -> string *)
 (* n 番目の hole でユーザがどの変数で match したいと入力してるかを取得 *)
@@ -429,17 +510,8 @@ let get_matched_variable n =
   (* Format.fprintf ppf "%s@." Sys.argv.(6); *)
   Sys.argv.(6)
 
-(* get_mode: unit -> select_mode *)
-let get_mode () = match Sys.argv.(5) with
-    "Refine" -> Refine
-  | "RefineArg" -> RefineArg
-  | "Match" -> Match
-  | "If" -> If
-  | "ShowGoal" -> ShowGoal
-  | _ -> failwith "Error: select_mode is neither Refine or Match"
-
 (* get_type:  Typedtree.structure * Typedtree.module_coercion ->
-                 int -> type_expr * env_t *)
+                 string -> select_mode -> type_expr * env_t *)
 let get_type (structure, coercion) n =
   let ppf = Format.formatter_of_out_channel stdout in 
   (*  Format.fprintf ppf "%a@." Printtyped.implementation structure;*)
@@ -454,10 +526,9 @@ let get_type (structure, coercion) n =
 (* expander の入り口：型の付いた入力プログラムを受け取ってくる *)
 (* Expander.go : Typedtree.structure * Typedtree.module_coercion ->
                  Typedtree.structure * Typedtree.module_coercion *)
-(* ./expander filename n mode Some(var) *)
-(*
+(* ./expander -w -A filename n mode Some(var) *)
 let go (structure, coercion) =
-  let n = int_of_string Sys.argv.(4) in
+  let n = Sys.argv.(4) in
   let mode = get_mode () in
   begin
     match mode with
@@ -470,127 +541,13 @@ let go (structure, coercion) =
     | If -> Format.fprintf ppf "if (exit(*{}*)0) then (exit(*{}*)0) else (exit(*{}*)0)@?"
     | ShowGoal -> let (typ, env) = get_type (structure, coercion) n in
       show_goal typ env
+    | FunType -> let (typ, _) = get_type (structure, coercion) n in
+		 show_fun_type typ
   end;
   exit 0;
   (structure, coercion) (* 返り値はこの型にしておく *)
-*)
 
-(***** テスト用の pretty printer *****)
-
-let rec pprint_expr expr =
-  print_expression expr;
-  print_expression_extra expr;
-  print_expression_desc expr.exp_desc
-
-let rec pprint_exprs exprs = match exprs with
-    [] -> Format.fprintf ppf "Finished pprint_exprs@."
-  | expr :: rest ->
-    pprint_expr expr;
-    pprint_exprs rest
-
-let rec pprint_bindings bindings = match bindings with
-    [] -> Format.fprintf ppf "Finished pprint_bindings@."
-  | {vb_expr = expr} :: rest ->
-    pprint_expr expr;
-    pprint_bindings rest
-
-let rec pprint_structure s_items =
-  begin match s_items with
-      [] -> Format.fprintf ppf "Finished pprint_structure@."
-    | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
-      pprint_bindings bindings;
-      pprint_structure rest
-    | {str_desc = _} :: rest -> pprint_structure rest
-  end
-
-let pprint_pattern (structure, coercion) =
-  begin
-    match coercion with
-      Typedtree.Tcoerce_none -> (* main structure *)
-      pprint_structure structure.str_items
-    | _ -> failwith "Expander: module_coercion not supported yet."
-  end
-
-let rec type_of_patterns funname pats =
-  match pats with
-    [] -> raise Not_found
-  | (p :: rest) ->
-    try
-      type_of_pattern funname p
-    with
-      Not_found -> type_of_patterns funname rest
-
-and type_of_pattern funname pat =
-  match pat.pat_desc with
-    Tpat_any -> raise Not_found
-  | Tpat_var (fname, _) -> (* function name *)
-    if fname.name = funname then pat.pat_type
-    else raise Not_found
-  | Tpat_alias (p, i, _) ->
-    if i.name = funname then p.pat_type (* pat.pat_type ? *)
-    else type_of_pattern funname p
-  | Tpat_constant (c) -> raise Not_found
-  | Tpat_tuple (pats) -> type_of_patterns funname pats
-  | Tpat_construct (_, description, pats) -> type_of_patterns funname pats (* need to using description? *)
-  | Tpat_variant (_, pop, _) ->
-    begin
-      match pop with
-        None -> raise Not_found
-      | Some (p) -> type_of_pattern funname p
-    end
-  | Tpat_record (l, _) ->
-    begin
-      match l with
-        [] -> raise Not_found
-      | (_, description, p) :: rest -> type_of_pattern funname p (* need to using description? *)
-    end
-  | Tpat_array (pats) -> type_of_patterns funname pats
-  | Tpat_or (p1, p2, _) ->
-    begin
-      try
-        type_of_pattern funname p1
-      with
-        Not_found -> type_of_pattern funname p2
-    end
-  | Tpat_lazy (p) -> type_of_pattern funname p
-
-(* find_pattern_in_bindings: string -> value_binding list -> type_expr *)
-and find_pattern_in_bindings funname bindings = match bindings with
-    [] -> raise Not_found
-  | {vb_pat = pat} :: rest ->
-    begin try
-        let typ = type_of_pattern funname pat in
-        typ
-      (* if rec_flag = Recursive *)
-      (* then (typ, add_bindings env bindings) *)
-      (* else (typ, env) *)
-      with
-        Not_found -> find_pattern_in_bindings funname rest
-    end
-
-      (* find_bindings_in_structure: string -> structure_item list -> type_expr *)
-and find_bindings_in_structure funname s_items =
-  begin match s_items with
-      [] -> Format.fprintf ppf "@[Error (Expander): type of function %s is not found.@]@." funname;
-      exit 0
-    | {str_desc = Tstr_value (rec_flag, bindings)} :: rest ->
-      begin try
-          find_pattern_in_bindings funname bindings
-        with
-          Not_found -> find_bindings_in_structure funname rest
-      end
-    | {str_desc = _} :: rest -> find_bindings_in_structure funname rest
-  end
-    
-(* type_of_function: string -> (structure, coercion) -> Types.type_expr *)
-let type_of_function funname (structure, coercion) =
-  begin
-    match coercion with
-      Typedtree.Tcoerce_none -> (* main structure *)
-      find_bindings_in_structure funname structure.str_items
-    | _ -> failwith "Expander: module_coercion not supported yet."
-  end
-
+(*
 let go (structure, coercion) =
   (* Printtyped.implementation ppf structure; *)
   (* pprint_pattern (structure, coercion); *)
@@ -600,3 +557,4 @@ let go (structure, coercion) =
     funname Printtyp.type_expr typ;
   exit 0;
   (structure, coercion)
+*)
