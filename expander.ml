@@ -407,7 +407,7 @@ and print_type_kind kind =
       let rec loop l str = match l with
 	  [] -> str ^ "} -> (exit(*{}*)0)"
 	| [(name, _)] -> loop [] (str ^ name ^ " = " ^ name)
-	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ ", ")
+	| ((name, _) :: r) -> loop r (str ^ name ^ " = " ^ name ^ "; ")
       in
       let str = loop lst s in
       Format.fprintf ppf "%s@?" str;
